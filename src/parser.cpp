@@ -15,3 +15,34 @@
 //   - Filtering duplicates is optional.
 //
 // TODO: Improve regex for <a href=""> extraction.
+#include <iostream>
+#include <regex>
+#include <string>
+#include <vector>
+
+using namespace std;
+
+// Function that parses href links from an HTML string
+vector<string> parseHTML(const string& html) {
+
+    regex hrefRegex("href\\s*=\\s*\"([^\"]*)\"");
+    smatch match;
+
+    vector<string> urls;   // list to store URLs
+    int pos = 0;
+
+    while (regex_search(html.begin() + pos, html.end(), match, hrefRegex))
+    {
+
+        urls.push_back(match[1]);   // save URL
+
+        pos += match.position() + match.length();
+    }
+
+    return urls;   // return the list
+}
+
+int main()
+{
+    return 0;
+}
