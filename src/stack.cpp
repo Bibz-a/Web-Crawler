@@ -19,56 +19,70 @@
 #include <iostream>
 using namespace std;
 
+template <typename T>
 struct SNode{
-    int data;
-    SNode* next;
+    T data;
+    SNode<T>* next;
 
-    SNode(int d){
+    SNode(const T& d){
         data = d;
         next = nullptr;
     }
 };
 
+template <typename T>
 class Stack{
     private:
-    SNode* top;
+    SNode<T>* top;
+    int count;
 
     public:
     Stack(){
         top = nullptr;
+        count =0;
     }
 
-    bool isEmpty(){
+    bool empty() const{
         return (top == nullptr);
     }
 
-    void push(int v){
-        SNode* newnode = new SNode(v);
-        newnode->next = top;
-        top = newnode;
+    int size() const {
+        return count;
     }
 
-    int pop () {
+    void push(const T& v){
+        SNode<T>* newnode = new SNode<T>(v);
+        newnode->next = top;
+        top = newnode;
+        count++;
+    }
+
+    T pop () {
         if (top == nullptr) {
-            cout << "Stack is empty\n";
-            return -1;
+            return T();
         }
 
-        SNode* temp = top;
-        int v = top->data;
+        SNode<T>* temp = top;
+        T v = top->data;
         top = top->next;
 
         delete temp;
+        count--;
         return v;
     }
 
-    int peek(){
-        if (isEmpty()){
+    T peek() const{
+        if (empty()){
             cout << "Stack empty\n";
-            return -1;
+            return T();
         }
 
         return (top->data);
+    }
+
+    ~Stack(){
+        while (!empty())
+            pop();
     }
 
 };

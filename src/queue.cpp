@@ -18,49 +18,57 @@
 #include <iostream>
 using namespace std;
 
+template <typename T>
 struct QNode{
-    int data;
-    QNode* next;
+    T data;
+    QNode<T>* next;
 
-    QNode(int d){
+    QNode(const T& d){
         data = d;
         next = nullptr;
     }
 };
 
+template <typename T>
 class Queue{
     private:
-    QNode* front;
-    QNode* rear;
+    QNode<T>* front;
+    QNode<T>* rear;
+    int count;
 
     public:
     Queue(){
         front = rear = nullptr;
+        count =0;
     }
 
-    bool isEmpty(){
-        return (rear == nullptr);
+    bool empty() const{
+        return (front == nullptr);
     }
 
-    void enqueue(int v){
-        QNode* newnode = new QNode (v);
+    int size () const{
+        return count;
+    }
 
-        if (isEmpty()){
+    void enqueue(const T& v){
+        QNode<T>* newnode = new QNode<T> (v);
+
+        if (empty()){
             front = rear = newnode;
         } else {
             rear->next = newnode;
             rear = newnode;
         }
+        count++;
     }
 
-    int dequeue(){
-        if (isEmpty()){
-            cout << "Queue is empty\n";
-            return -1;
+    T dequeue(){
+        if (empty()){
+            return T();
         }
 
-        QNode* temp = front;
-        int v = front->data;
+        QNode<T>* temp = front;
+        T v = front->data;
 
         front = front->next;
 
@@ -68,36 +76,39 @@ class Queue{
             rear = nullptr;
         
         delete temp;
+        count--;
         return v;
     }
 
-    // not really required acc to readme, but ill add it incase for now
-    int peek(){
-        if (isEmpty()){
-            cout << "Queue is empty\n";
-            return -1;
-        }
-        return front->data;
-    }
+    // T peek(){
+    //     if (isEmpty()){
+    //         cout << "Queue is empty\n";
+    //         return T();
+    //     }
+    //     return front->data;
+    // }
 
-    // not really required acc to readme, but ill add it incase for now
-    void display(){
-        if (isEmpty()){
-            cout << "Queue is empty\n";
-            return;
-        }
+    // void display(){
+    //     if (isEmpty()){
+    //         cout << "Queue is empty\n";
+    //         return;
+    //     }
 
-        QNode* temp = front;
+    //     QNode<T>* temp = front;
 
-        while (temp != nullptr){
-            cout << temp->data <<" ";
-            temp = temp->next;
-        } 
-        cout << endl;
+    //     while (temp != nullptr){
+    //         cout << temp->data <<" ";
+    //         temp = temp->next;
+    //     } 
+    //     cout << endl;
+    // }
+
+    ~Queue(){
+        while (!empty())
+            dequeue();
     }
 
 };
-
 
 // this is just for testing and making sure it works for now
 int main(){

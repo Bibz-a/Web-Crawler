@@ -1,4 +1,3 @@
-
 // DynamicArray<T>
 // -----------------------------------------------
 // Simple resizable array used instead of stl 
@@ -15,5 +14,23 @@
 //   T* data
 //   int size, capacity
 //
-// : Implement boundary checks.
+// : Implement boundary checks
 
+#include <iostream>
+#include <stdexcept>
+using namespace std;
+
+template <typename T>
+class DynamicArray {
+    private:
+    T* data;
+    int size;
+    int cap;
+
+    void resize(){
+        cap*=2;
+        T* newdata = new 
+
+    }
+
+};
