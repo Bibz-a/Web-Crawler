@@ -133,7 +133,4 @@ vector<string> parseHTML(const string& baseUrl,const string& html) {
 
     return urls;   // return the list
 }
-int main()
-{
-    return 0;
-}
+// main() removed - using main.cpp instead
