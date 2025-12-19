@@ -12,6 +12,7 @@
 // Internal Structure:
 //   Singly linked list: Node { T data; Node* next; }
 
+#include "Queue.h"
 // Queue is used for BFS (breadth first search) by the first in, first out principle
 // addition done by rear pointer and removal by the front pointer
 
