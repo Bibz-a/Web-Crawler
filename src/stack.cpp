@@ -86,8 +86,3 @@ class Stack{
     }
 
 };
-
-int main(){
-
-    return 0;
-}
