@@ -86,44 +86,45 @@ string http_get(const string& url) {
 //g++ filehandler.cpp -o curl_fetch -lcurl
 // .\curl_fetch.exe
 
-// int main()
-// {
-//    
-//     curl_global_init(CURL_GLOBAL_ALL); 
+int main()
+{
+   
+    curl_global_init(CURL_GLOBAL_ALL); 
     
-//     
-//     const string success_url = "https://www.example.com";
-//     const string failure_url = "http://bad-url-does-not-exist.com"; // Should fail DNS resolution
+    
+    const string success_url = "https://www.example.com";
+    const string failure_url = "http://bad-url-does-not-exist.com"; // Should fail DNS resolution
 
-//     cout << "--- Starting Fetcher Test ---" << endl;
+    cout << "--- Starting Fetcher Test ---" << endl;
     
-//     
-//     cout << "Attempting SUCCESSFUL fetch for: " << success_url << endl;
-//     string html_success = http_get(success_url);
     
-//     if (!html_success.empty()) {
-//         cout << "SUCCESS: Downloaded " << html_success.length() << " bytes." << endl;
-//         // Optionally save the result to a file:
-//         // ofstream outfile("example.html");
-//         // outfile << html_success;
-//     } else {
-//         cout << "FAIL: Successful fetch attempt failed unexpectedly." << endl;
-//     }
+    cout << "Attempting SUCCESSFUL fetch for: " << success_url << endl;
+    string html_success = http_get(success_url);
+    
+    if (!html_success.empty()) {
+        cout << "SUCCESS: Downloaded " << html_success.length() << " bytes." << endl;
+        // Optionally save the result to a file:
+        // ofstream outfile("example.html");
+        // outfile << html_success;
+    } else {
+        cout << "FAIL: Successful fetch attempt failed unexpectedly." << endl;
+    }
 
-//     cout << "\n-----------------------------" << endl;
+    cout << "\n-----------------------------" << endl;
 
-//     
-//     cout << "Attempting FAILED fetch for: " << failure_url << endl;
-//     string html_failure = http_get(failure_url);
     
-//     if (html_failure.empty()) {
-//         cout << "SUCCESS: Failed fetch attempt correctly returned empty string." << endl;
-//     } else {
-//         cout << "FAIL: Failed fetch attempt returned content unexpectedly." << endl;
-//     }
+    cout << "Attempting FAILED fetch for: " << failure_url << endl;
+    string html_failure = http_get(failure_url);
     
-//     // 4. Clean up libcurl globally once
-//     curl_global_cleanup();
+    if (html_failure.empty()) {
+        cout << "SUCCESS: Failed fetch attempt correctly returned empty string." << endl;
+    } else {
+        cout << "FAIL: Failed fetch attempt returned content unexpectedly." << endl;
+    }
+    
+    // 4. Clean up libcurl globally once
+    curl_global_cleanup();
 
-//     return 0;
-// }
+    return 0;
+}
+
