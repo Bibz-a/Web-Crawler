@@ -5,6 +5,8 @@
 #include <iomanip>
 #include <utility>
 #include <cctype>
+#include <fstream>
+#include <algorithm>
 #include <curl/curl.h>
 #include <windows.h>
 #include "filehandler.h"
@@ -13,6 +15,7 @@
 #include "stack.h"
 #include "queue.h"
 #include "sorting.h"
+#include "Hashmap.h"
 using namespace std;
 
 // ANSI color codes for console output
@@ -51,11 +54,14 @@ void enableAnsiColors() {
 void printBanner() {
     cout << "\n\n";
     cout << BRIGHT_CYAN << "=================================================================" << RESET << "\n";
-    cout << BRIGHT_CYAN << "|" << RESET << "                                                               " << BRIGHT_CYAN << "|" << RESET << "\n";
-    cout << BRIGHT_CYAN << "|" << RESET << BOLD << BRIGHT_YELLOW << "                         WEB CRAWLER                         " << RESET << BRIGHT_CYAN << "|" << RESET << "\n";
-    cout << BRIGHT_CYAN << "|" << RESET << BOLD << BRIGHT_YELLOW << "                      INTERACTIVE CRAWLER                      " << RESET << BRIGHT_CYAN << "|" << RESET << "\n";
-    cout << BRIGHT_CYAN << "|" << RESET << "                            " << BRIGHT_YELLOW << "🕷️" << RESET << "                            " << BRIGHT_CYAN << "|" << RESET << "\n";
-    cout << BRIGHT_CYAN << "|" << RESET << "                                                               " << BRIGHT_CYAN << "|" << RESET << "\n";
+    cout << BRIGHT_CYAN << "|" << RESET << string(63, ' ') << BRIGHT_CYAN << "|" << RESET << "\n";
+    // "WEB CRAWLER" = 11 chars, center in 63: (63-11)/2 = 26 spaces before
+    cout << BRIGHT_CYAN << "|" << RESET << string(26, ' ') << BOLD << BRIGHT_YELLOW << "WEB CRAWLER" << RESET << string(26, ' ') << BRIGHT_CYAN << "|" << RESET << "\n";
+    // "INTERACTIVE CRAWLER" = 19 chars, center in 63: (63-19)/2 = 22 spaces before
+    cout << BRIGHT_CYAN << "|" << RESET << string(22, ' ') << BOLD << BRIGHT_YELLOW << "INTERACTIVE CRAWLER" << RESET << string(22, ' ') << BRIGHT_CYAN << "|" << RESET << "\n";
+    // Spider emoji (2 chars wide), center in 63: (63-2)/2 = 30 spaces before, 31 after
+    cout << BRIGHT_CYAN << "|" << RESET << string(30, ' ') << BRIGHT_YELLOW << "🕷️" << RESET << string(31, ' ') << BRIGHT_CYAN << " |" << RESET << "\n";
+    cout << BRIGHT_CYAN << "|" << RESET << string(63, ' ') << BRIGHT_CYAN << "|" << RESET << "\n";
     cout << BRIGHT_CYAN << "=================================================================" << RESET << "\n\n";
 }
 
@@ -72,7 +78,9 @@ void printMenu() {
     cout << "  2. Display Spanning Tree\n";
     cout << "  3. View All Crawled URLs\n";
     cout << "  4. View Sorted URLs\n";
-    cout << "  5. Exit\n";
+    cout << "  5. Search URL\n";
+    cout << "  6. Display Log File\n";
+    cout << "  7. Exit\n";
     cout << "\nEnter your choice: ";
 }
 
@@ -153,7 +161,7 @@ char getTraversalMethod() {
 }
 
 // BFS crawling function using custom Queue
-void crawlBFS(Graph& graph, const string& startUrl, set<string>& visited, int maxDepth) {
+void crawlBFS(Graph& graph, const string& startUrl, HashMap& visited, int maxDepth) {
     printSectionHeader("BFS Crawling Started");
     
     // Custom Queue for BFS
@@ -168,12 +176,12 @@ void crawlBFS(Graph& graph, const string& startUrl, set<string>& visited, int ma
         int depth = current.second;
         
         // Skip if exceeded max depth or already visited
-        if (depth > maxDepth || visited.find(url) != visited.end()) {
+        if (depth > maxDepth || visited.contains(url)) {
             continue;
         }
         
         // Mark as visited
-        visited.insert(url);
+        visited.set(url, true);
         cout << "[BFS] Depth " << depth << ": " << url << endl;
         
         // Get current node index
@@ -200,7 +208,7 @@ void crawlBFS(Graph& graph, const string& startUrl, set<string>& visited, int ma
             graph.addEdge(currentNodeIndex, linkedNodeIndex);
             
             // Enqueue if not visited and within depth limit
-            if (visited.find(linkedUrl) == visited.end() && depth < maxDepth) {
+            if (!visited.contains(linkedUrl) && depth < maxDepth) {
                 q.enqueue(make_pair(linkedUrl, depth + 1));
             }
         }
@@ -208,7 +216,7 @@ void crawlBFS(Graph& graph, const string& startUrl, set<string>& visited, int ma
 }
 
 // DFS crawling function using custom Stack
-void crawlDFS(Graph& graph, const string& startUrl, set<string>& visited, int maxDepth) {
+void crawlDFS(Graph& graph, const string& startUrl, HashMap& visited, int maxDepth) {
     printSectionHeader("DFS Crawling Started");
     
     // Custom Stack for DFS
@@ -223,12 +231,12 @@ void crawlDFS(Graph& graph, const string& startUrl, set<string>& visited, int ma
         int depth = current.second;
         
         // Skip if exceeded max depth or already visited
-        if (depth > maxDepth || visited.find(url) != visited.end()) {
+        if (depth > maxDepth || visited.contains(url)) {
             continue;
         }
         
         // Mark as visited
-        visited.insert(url);
+        visited.set(url, true);
         cout << "[DFS] Depth " << depth << ": " << url << endl;
         
         // Get current node index
@@ -256,7 +264,7 @@ void crawlDFS(Graph& graph, const string& startUrl, set<string>& visited, int ma
             graph.addEdge(currentNodeIndex, linkedNodeIndex);
             
             // Push to stack if not visited and within depth limit
-            if (visited.find(linkedUrl) == visited.end() && depth < maxDepth) {
+            if (!visited.contains(linkedUrl) && depth < maxDepth) {
                 s.push(make_pair(linkedUrl, depth + 1));
             }
         }
@@ -264,28 +272,26 @@ void crawlDFS(Graph& graph, const string& startUrl, set<string>& visited, int ma
 }
 
 // Print all URLs discovered during crawl
-void printAllUrls(const set<string>& visited) {
+void printAllUrls(HashMap& visited) {
+    vector<string> urls = visited.getAllKeys();
     printSectionHeader("All Discovered URLs (" + to_string(visited.size()) + " total)");
     
     int index = 1;
-    for (const string& url : visited) {
+    for (const string& url : urls) {
         cout << setw(4) << index << ". " << url << endl;
         index++;
     }
 }
 
 // Print sorted URLs using merge sort
-void printSortedUrls(const set<string>& visited) {
-    if (visited.empty()) {
+void printSortedUrls(HashMap& visited) {
+    if (visited.size() == 0) {
         cout << RED << "[Error] No URLs to sort." << RESET << "\n";
         return;
     }
     
-    // Convert set to vector for sorting
-    vector<string> urlVector;
-    for (const string& url : visited) {
-        urlVector.push_back(url);
-    }
+    // Get all keys from HashMap
+    vector<string> urlVector = visited.getAllKeys();
     
     // Sort using merge sort
     if (!urlVector.empty()) {
@@ -299,6 +305,123 @@ void printSortedUrls(const set<string>& visited) {
         cout << setw(4) << index << ". " << url << endl;
         index++;
     }
+}
+
+// Search for a URL in the HashMap
+void searchUrl(HashMap& visited) {
+    if (visited.size() == 0) {
+        cout << RED << "[Error] No URLs to search. Please crawl a website first!" << RESET << "\n";
+        return;
+    }
+    
+    string searchUrl;
+    cout << "\nEnter URL to search: ";
+    getline(cin, searchUrl);
+    
+    // Remove leading/trailing whitespace
+    while (!searchUrl.empty() && (searchUrl[0] == ' ' || searchUrl[0] == '\t')) {
+        searchUrl.erase(0, 1);
+    }
+    while (!searchUrl.empty() && (searchUrl.back() == ' ' || searchUrl.back() == '\t')) {
+        searchUrl.pop_back();
+    }
+    
+    if (searchUrl.empty()) {
+        cout << RED << "[Error] URL cannot be empty." << RESET << "\n";
+        return;
+    }
+    
+    printSectionHeader("Search Results");
+    
+    // Use HashMap contains method to search
+    if (visited.contains(searchUrl)) {
+        cout << GREEN << "✓ URL Found!" << RESET << "\n";
+        cout << "URL: " << searchUrl << "\n";
+        cout << "Status: Visited\n";
+    } else {
+        cout << RED << "✗ URL Not Found" << RESET << "\n";
+        cout << "URL: " << searchUrl << "\n";
+        cout << "Status: Not in crawled URLs\n";
+        cout << "\nTotal URLs in database: " << visited.size() << "\n";
+    }
+}
+
+// Display log file
+void displayLogFile() {
+    const string logFileName = "fetcher.log";
+    ifstream logFile(logFileName);
+    
+    printSectionHeader("Crawler Log File");
+    
+    if (!logFile.is_open()) {
+        cout << RED << "[Error] Could not open log file: " << logFileName << RESET << "\n";
+        cout << "The log file may not exist yet. Start crawling to generate logs.\n";
+        return;
+    }
+    
+    string line;
+    int lineNumber = 1;
+    int totalEntries = 0;
+    
+    // Count total lines first
+    ifstream countFile(logFileName);
+    while (getline(countFile, line)) {
+        totalEntries++;
+    }
+    countFile.close();
+    
+    if (totalEntries == 0) {
+        cout << YELLOW << "Log file is empty. No entries found." << RESET << "\n";
+        logFile.close();
+        return;
+    }
+    
+    cout << "Total log entries: " << totalEntries << "\n\n";
+    
+    // Ask user if they want to see all entries or limit
+    cout << "Display options:\n";
+    cout << "  1. Show all entries\n";
+    cout << "  2. Show last 50 entries\n";
+    cout << "  3. Show last 20 entries\n";
+    cout << "Enter choice (1-3): ";
+    
+    int displayChoice;
+    if (!(cin >> displayChoice)) {
+        cin.clear();
+        cin.ignore(10000, '\n');
+        displayChoice = 2; // Default to last 50
+    }
+    cin.ignore(); // Clear newline
+    
+    int startLine = 1;
+    if (displayChoice == 2) {
+        startLine = max(1, totalEntries - 49);
+    } else if (displayChoice == 3) {
+        startLine = max(1, totalEntries - 19);
+    }
+    
+    // Reopen file to read
+    logFile.close();
+    logFile.open(logFileName);
+    
+    int currentLine = 1;
+    while (getline(logFile, line)) {
+        if (currentLine >= startLine) {
+            // Parse and color code based on size
+            if (line.find("Size: 0 bytes") != string::npos) {
+                cout << RED << setw(5) << currentLine << ". " << RESET << line << "\n";
+            } else {
+                cout << setw(5) << currentLine << ". " << line << "\n";
+            }
+        }
+        currentLine++;
+    }
+    
+    if (displayChoice != 1 && startLine > 1) {
+        cout << "\n" << YELLOW << "... showing entries " << startLine << " to " << totalEntries << " of " << totalEntries << RESET << "\n";
+    }
+    
+    logFile.close();
 }
 
 // Print graph in tree-like format (spanning tree)
@@ -370,7 +493,7 @@ int main() {
     printBanner();
     
     Graph graph;
-    set<string> visited;
+    HashMap visited;
     string startUrl;
     int crawlDepth = 3;
     bool hasCrawled = false;
@@ -395,7 +518,7 @@ int main() {
                 
                 // Clear previous crawl data
                 graph = Graph();
-                visited.clear();
+                visited = HashMap(); // Create new HashMap to clear
                 hasCrawled = false;
                 
                 // Perform crawling based on method
@@ -421,7 +544,7 @@ int main() {
                 
                 printSectionHeader("Spanning Tree of Crawled URLs");
                 
-                if (visited.empty()) {
+                if (visited.size() == 0) {
                     cout << RED << "[Error] No URLs to display." << RESET << "\n";
                     break;
                 }
@@ -465,22 +588,37 @@ int main() {
             }
             
             case 5: {
+                if (!hasCrawled) {
+                    cout << RED << "[Error] Please crawl a website first (Option 1)!" << RESET << "\n";
+                    break;
+                }
+                
+                searchUrl(visited);
+                break;
+            }
+            
+            case 6: {
+                displayLogFile();
+                break;
+            }
+            
+            case 7: {
                 cout << "\nThank you for using Web Crawler! Goodbye!\n\n";
                 break;
             }
             
             default: {
-                cout << RED << "[Error] Invalid choice! Please enter 1-5." << RESET << "\n";
+                cout << RED << "[Error] Invalid choice! Please enter 1-7." << RESET << "\n";
                 break;
             }
         }
         
-        if (choice != 5) {
+        if (choice != 7) {
             cout << "\nPress Enter to continue...";
             cin.get();
         }
         
-    } while (choice != 5);
+    } while (choice != 7);
     
     // Cleanup curl
     curl_global_cleanup();
