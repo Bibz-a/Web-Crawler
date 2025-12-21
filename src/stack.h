@@ -24,7 +24,7 @@ class Stack{
     public:
     Stack(){
         top = nullptr;
-        count =0;
+        count = 0;
     }
 
     bool empty() const{
@@ -42,7 +42,7 @@ class Stack{
         count++;
     }
 
-    T pop () {
+    T pop() {
         if (top == nullptr) {
             return T();
         }
@@ -58,10 +58,8 @@ class Stack{
 
     T peek() const{
         if (empty()){
-            cout << "Stack empty\n";
             return T();
         }
-
         return (top->data);
     }
 
@@ -69,7 +67,7 @@ class Stack{
         while (!empty())
             pop();
     }
-
 };
 
 #endif
+

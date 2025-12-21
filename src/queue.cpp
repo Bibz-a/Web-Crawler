@@ -110,9 +110,3 @@ class Queue{
     }
 
 };
-
-// this is just for testing and making sure it works for now
-int main(){
-
-    return 0;
-}

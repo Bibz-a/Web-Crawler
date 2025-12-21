@@ -1,21 +1,41 @@
-// ===============================================
-// Sorting Algorithms (Custom Implementations)
-// -----------------------------------------------
-// Manual sorting functions for educational use.
-// No STL sort() allowed.
-//
-// Required Functions:
-//   + void bubbleSort(DynamicArray<T>& arr)
-//   + void selectionSort(DynamicArray<T>& arr)
-//   + void insertionSort(DynamicArray<T>& arr)
-//
-// Optional:
-//   + quickSort()
-//   + mergeSort()
-//
-// Use Cases in Project:
-//   - Sort URLs alphabetically
-//   - Sort nodes by number of outgoing edges
-//
-// TODO: Add generic template version of quicksort.
-// ===============================================
+#include <iostream>
+#include <string>
+#include <vector>
+using namespace std;
+
+void merge(vector<string>& arr, int str, int mid, int end)
+{
+    vector<string> temp(end - str + 1);
+
+    int i = str;
+    int j = mid + 1;
+    int count = 0;
+
+    while (i <= mid && j <= end)
+    {
+        if (arr[i] <= arr[j])    // alphabetical string comparison
+            temp[count++] = arr[i++];
+        else
+            temp[count++] = arr[j++];
+    }
+
+    while (i <= mid)
+        temp[count++] = arr[i++];
+
+    while (j <= end)
+        temp[count++] = arr[j++];
+
+    for (int k = 0; k < temp.size(); k++)
+        arr[str + k] = temp[k];
+}
+
+void mergesort(vector<string>& arr, int str, int end)
+{
+    if (str < end)
+    {
+        int mid = (str + end) / 2;
+        mergesort(arr, str, mid);
+        mergesort(arr, mid + 1, end);
+        merge(arr, str, mid, end);
+    }
+}

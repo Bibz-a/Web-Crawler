@@ -25,19 +25,19 @@ class Queue{
     public:
     Queue(){
         front = rear = nullptr;
-        count =0;
+        count = 0;
     }
 
     bool empty() const{
         return (front == nullptr);
     }
 
-    int size () const{
+    int size() const{
         return count;
     }
 
     void enqueue(const T& v){
-        QNode<T>* newnode = new QNode<T> (v);
+        QNode<T>* newnode = new QNode<T>(v);
 
         if (empty()){
             front = rear = newnode;
@@ -70,7 +70,7 @@ class Queue{
         while (!empty())
             dequeue();
     }
-
 };
 
 #endif
+
