@@ -5,8 +5,6 @@
 #include <iomanip>
 #include <utility>
 #include <cctype>
-#include <fstream>
-#include <algorithm>
 #include <curl/curl.h>
 #include <windows.h>
 #include "filehandler.h"
@@ -79,8 +77,7 @@ void printMenu() {
     cout << "  3. View All Crawled URLs\n";
     cout << "  4. View Sorted URLs\n";
     cout << "  5. Search URL\n";
-    cout << "  6. Display Log File\n";
-    cout << "  7. Exit\n";
+    cout << "  6. Exit\n";
     cout << "\nEnter your choice: ";
 }
 
@@ -104,7 +101,7 @@ string getUserUrl() {
             continue;
         }
         
-        // Basic URL validation
+        // Url gotta have http:// or https:// cuz curl needs this
         if (url.find("http://") != 0 && url.find("https://") != 0) {
             cout << RED << "[Error] URL must start with http:// or https://" << RESET << endl;
             continue;
@@ -115,7 +112,7 @@ string getUserUrl() {
     return url;
 }
 
-// Get user input for depth with error handling
+// Get user input for depth with error handling - Crawl depth is how many levels deep crawler gona go
 int getUserDepth() {
     int depth;
     while (true) {
@@ -160,11 +157,11 @@ char getTraversalMethod() {
     return method;
 }
 
-// BFS crawling function using custom Queue
+// BFS crawling function using Queue.cpp
 void crawlBFS(Graph& graph, const string& startUrl, HashMap& visited, int maxDepth) {
     printSectionHeader("BFS Crawling Started");
     
-    // Custom Queue for BFS
+    //makin the custom Queue
     Queue<pair<string, int>> q; // pair of (URL, depth)
     q.enqueue(make_pair(startUrl, 0));
     
@@ -215,7 +212,7 @@ void crawlBFS(Graph& graph, const string& startUrl, HashMap& visited, int maxDep
     }
 }
 
-// DFS crawling function using custom Stack
+// DFS crawling function using Stack.cpp
 void crawlDFS(Graph& graph, const string& startUrl, HashMap& visited, int maxDepth) {
     printSectionHeader("DFS Crawling Started");
     
@@ -239,7 +236,7 @@ void crawlDFS(Graph& graph, const string& startUrl, HashMap& visited, int maxDep
         visited.set(url, true);
         cout << "[DFS] Depth " << depth << ": " << url << endl;
         
-        // Get current node index
+        // Get current node index - kinda an extra step
         int currentNodeIndex = graph.getIndex(url);
         if (currentNodeIndex == -1) {
             currentNodeIndex = graph.addNode(url);
@@ -257,7 +254,7 @@ void crawlDFS(Graph& graph, const string& startUrl, HashMap& visited, int maxDep
         vector<string> rawLinks = parseHTML(url, htmlContent);
         vector<string> extractedUrls = resolveAndFilterLinks(rawLinks, url);
         
-        // Push links to stack in reverse order for DFS (so first link is processed first)
+        // Push links to stack in reverse order for DFS - first link processed first
         for (int i = extractedUrls.size() - 1; i >= 0; i--) {
             const string& linkedUrl = extractedUrls[i];
             int linkedNodeIndex = graph.addNode(linkedUrl);
@@ -271,7 +268,7 @@ void crawlDFS(Graph& graph, const string& startUrl, HashMap& visited, int maxDep
     }
 }
 
-// Print all URLs discovered during crawl
+// Print all URLs discovered during crawl - UNSORTED
 void printAllUrls(HashMap& visited) {
     vector<string> urls = visited.getAllKeys();
     printSectionHeader("All Discovered URLs (" + to_string(visited.size()) + " total)");
@@ -346,149 +343,13 @@ void searchUrl(HashMap& visited) {
     }
 }
 
-// Display log file
-void displayLogFile() {
-    const string logFileName = "fetcher.log";
-    ifstream logFile(logFileName);
-    
-    printSectionHeader("Crawler Log File");
-    
-    if (!logFile.is_open()) {
-        cout << RED << "[Error] Could not open log file: " << logFileName << RESET << "\n";
-        cout << "The log file may not exist yet. Start crawling to generate logs.\n";
-        return;
-    }
-    
-    string line;
-    int lineNumber = 1;
-    int totalEntries = 0;
-    
-    // Count total lines first
-    ifstream countFile(logFileName);
-    while (getline(countFile, line)) {
-        totalEntries++;
-    }
-    countFile.close();
-    
-    if (totalEntries == 0) {
-        cout << YELLOW << "Log file is empty. No entries found." << RESET << "\n";
-        logFile.close();
-        return;
-    }
-    
-    cout << "Total log entries: " << totalEntries << "\n\n";
-    
-    // Ask user if they want to see all entries or limit
-    cout << "Display options:\n";
-    cout << "  1. Show all entries\n";
-    cout << "  2. Show last 50 entries\n";
-    cout << "  3. Show last 20 entries\n";
-    cout << "Enter choice (1-3): ";
-    
-    int displayChoice;
-    if (!(cin >> displayChoice)) {
-        cin.clear();
-        cin.ignore(10000, '\n');
-        displayChoice = 2; // Default to last 50
-    }
-    cin.ignore(); // Clear newline
-    
-    int startLine = 1;
-    if (displayChoice == 2) {
-        startLine = max(1, totalEntries - 49);
-    } else if (displayChoice == 3) {
-        startLine = max(1, totalEntries - 19);
-    }
-    
-    // Reopen file to read
-    logFile.close();
-    logFile.open(logFileName);
-    
-    int currentLine = 1;
-    while (getline(logFile, line)) {
-        if (currentLine >= startLine) {
-            // Parse and color code based on size
-            if (line.find("Size: 0 bytes") != string::npos) {
-                cout << RED << setw(5) << currentLine << ". " << RESET << line << "\n";
-            } else {
-                cout << setw(5) << currentLine << ". " << line << "\n";
-            }
-        }
-        currentLine++;
-    }
-    
-    if (displayChoice != 1 && startLine > 1) {
-        cout << "\n" << YELLOW << "... showing entries " << startLine << " to " << totalEntries << " of " << totalEntries << RESET << "\n";
-    }
-    
-    logFile.close();
-}
-
-// Print graph in tree-like format (spanning tree)
-void printGraphTree(Graph& graph, int nodeIndex, int depth, set<int>& printed, const string& prefix = "") {
-    if (printed.find(nodeIndex) != printed.end()) {
-        return; // Already printed to avoid cycles
-    }
-    
-    printed.insert(nodeIndex);
-    
-    // Get URL for this node
-    string url = graph.getUrl(nodeIndex);
-    if (url.empty()) {
-        return;
-    }
-    
-    // Get neighbors first
-    vector<int>& neighbors = graph.getNeighbors(nodeIndex);
-    
-    // Print current node
-    if (depth == 0) {
-        cout << "* " << url << endl;
-    } else {
-        cout << prefix << "+-- " << url << endl;
-    }
-    
-    // Process neighbors
-    for (int i = 0; i < neighbors.size(); i++) {
-        string newPrefix = prefix;
-        if (depth > 0) {
-            if (i == neighbors.size() - 1) {
-                newPrefix += "    "; // Last child
-            } else {
-                newPrefix += "|   "; // Not last child
-            }
-        }
-        printGraphTree(graph, neighbors[i], depth + 1, printed, newPrefix);
-    }
-}
-
-// Generate spanning tree using DFS
-void generateSpanningTree(Graph& graph, Graph& spanningTree, int startIndex, set<int>& visited) {
-    if (visited.find(startIndex) != visited.end()) {
-        return;
-    }
-    
-    visited.insert(startIndex);
-    string url = graph.getUrl(startIndex);
-    spanningTree.addNode(url);
-    
-    vector<int>& neighbors = graph.getNeighbors(startIndex);
-    for (int neighbor : neighbors) {
-        if (visited.find(neighbor) == visited.end()) {
-            string neighborUrl = graph.getUrl(neighbor);
-            int neighborIndex = spanningTree.addNode(neighborUrl);
-            int currentIndex = spanningTree.getIndex(url);
-            spanningTree.addEdge(currentIndex, neighborIndex);
-            generateSpanningTree(graph, spanningTree, neighbor, visited);
-        }
-    }
-}
+//spanning tree needed
 
 int main() {
-    // Enable ANSI color codes on Windows
+    // Enable ANSI color codes on Windows - default on Linux/Mac but on windows u gotta enable it
     enableAnsiColors();
     
-    curl_global_init(CURL_GLOBAL_ALL);
+    curl_global_init(CURL_GLOBAL_ALL); 
     
     printBanner();
     
@@ -496,7 +357,7 @@ int main() {
     HashMap visited;
     string startUrl;
     int crawlDepth = 3;
-    bool hasCrawled = false;
+    bool hasCrawled = false; //need this to make sure the user crawled before accessing other options
     
     int choice;
     do {
@@ -517,7 +378,7 @@ int main() {
                 char method = getTraversalMethod();
                 
                 // Clear previous crawl data
-                graph = Graph();
+                graph = Graph(); //each crawl requires a fresh Graph
                 visited = HashMap(); // Create new HashMap to clear
                 hasCrawled = false;
                 
@@ -537,33 +398,7 @@ int main() {
             }
             
             case 2: {
-                if (!hasCrawled) {
-                    cout << RED << "[Error] Please crawl a website first (Option 1)!" << RESET << "\n";
-                    break;
-                }
-                
-                printSectionHeader("Spanning Tree of Crawled URLs");
-                
-                if (visited.size() == 0) {
-                    cout << RED << "[Error] No URLs to display." << RESET << "\n";
-                    break;
-                }
-                
-                // Generate spanning tree
-                Graph spanningTree;
-                set<int> treeVisited;
-        int startIndex = graph.getIndex(startUrl);
-                
-        if (startIndex != -1) {
-                    generateSpanningTree(graph, spanningTree, startIndex, treeVisited);
-                    
-                    // Print spanning tree
-                    set<int> printed;
-                    printGraphTree(spanningTree, spanningTree.getIndex(startUrl), 0, printed);
-        } else {
-                    cout << RED << "[Error] Starting URL not found in graph!" << RESET << "\n";
-                }
-                
+                // Generate and print spanning tree
                 break;
             }
             
@@ -598,27 +433,22 @@ int main() {
             }
             
             case 6: {
-                displayLogFile();
-                break;
-            }
-            
-            case 7: {
                 cout << "\nThank you for using Web Crawler! Goodbye!\n\n";
                 break;
             }
             
             default: {
-                cout << RED << "[Error] Invalid choice! Please enter 1-7." << RESET << "\n";
+                cout << RED << "[Error] Invalid choice! Please enter 1-6." << RESET << "\n";
                 break;
             }
         }
         
-        if (choice != 7) {
+        if (choice != 6) {
             cout << "\nPress Enter to continue...";
             cin.get();
         }
         
-    } while (choice != 7);
+    } while (choice != 6);
     
     // Cleanup curl
     curl_global_cleanup();
