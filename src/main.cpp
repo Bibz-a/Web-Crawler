@@ -425,7 +425,65 @@ void displayLogFile() {
 }
 
 //spanning tree here
+// Print graph in tree-like format - SPANNING TREE
+void printGraphTree(Graph& graph, int nodeIndex, int depth, set<int>& printed, const string& prefix = "") {
+    if (printed.find(nodeIndex) != printed.end()) {
+        return; // Already printed to avoid cycles - spanning tree should not have cycles - makes it diff from Graphs
+    }
+    
+    printed.insert(nodeIndex);
+    
+    // Get URL for this node
+    string url = graph.getUrl(nodeIndex);
+    if (url.empty()) {
+        return;
+    }
+    
+    // Get neighbors first
+    vector<int>& neighbors = graph.getNeighbors(nodeIndex);
+    
+    // Print current node
+    if (depth == 0) {
+        cout << "* " << url << endl; //ROOT node
+    } else {
+        cout << prefix << "+-- " << url << endl; // Child nodes
+    }
+    
+    // Process neighbors
+    for (int i = 0; i < neighbors.size(); i++) {
+        string newPrefix = prefix;
+        if (depth > 0) {
+            if (i == neighbors.size() - 1) {
+                newPrefix += "    "; // Last child
+            } else {
+                newPrefix += "|   "; // Not last child
+            }
+        }
+        printGraphTree(graph, neighbors[i], depth + 1, printed, newPrefix);
+    }
+}
 
+// Generate spanning tree using DFS - this makes the tree with no cycles
+void generateSpanningTree(Graph& graph, Graph& spanningTree, int startIndex, set<int>& visited) {
+    if (visited.find(startIndex) != visited.end()) { // Already visited
+        return;
+    }
+    
+    visited.insert(startIndex);
+    string url = graph.getUrl(startIndex);
+    spanningTree.addNode(url);
+    
+    vector<int>& neighbors = graph.getNeighbors(startIndex);
+    for (int neighbor : neighbors) { //loops thru all neighbours of current node
+        if (visited.find(neighbor) == visited.end()) { //neighhbour not visited yet -> add it to spanning tree
+            string neighborUrl = graph.getUrl(neighbor);  
+            int neighborIndex = spanningTree.addNode(neighborUrl);
+            int currentIndex = spanningTree.getIndex(url);
+            spanningTree.addEdge(currentIndex, neighborIndex);  //connect the neighbout to current node in Spanning tree
+            generateSpanningTree(graph, spanningTree, neighbor, visited); //recurssive call for neighbour
+        }
+    }
+}
 int main() {
     // Enable ANSI color codes on Windows
     enableAnsiColors();
@@ -480,6 +538,32 @@ int main() {
             
             case 2: {
                 //spanning tree here
+                if (!hasCrawled) {
+                    cout << RED << "[Error] Please crawl a website first (Option 1)!" << RESET << "\n";
+                    break;
+                }
+                
+                printSectionHeader("Spanning Tree of Crawled URLs");
+                
+                if (visited.size() == 0) {
+                    cout << RED << "[Error] No URLs to display." << RESET << "\n";
+                    break;
+                }
+                
+                // Generate spanning tree
+                Graph spanningTree;
+                set<int> treeVisited;
+        int startIndex = graph.getIndex(startUrl); //returns -1 if not found
+                
+        if (startIndex != -1) {
+                    generateSpanningTree(graph, spanningTree, startIndex, treeVisited);
+                    
+                    // Print spanning tree
+                    set<int> printed;
+                    printGraphTree(spanningTree, spanningTree.getIndex(startUrl), 0, printed);
+        } else {
+                    cout << RED << "[Error] Starting URL not found in graph!" << RESET << "\n";
+                }
             }
             
             case 3: {

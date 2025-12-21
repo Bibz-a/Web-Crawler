@@ -86,10 +86,10 @@ string http_get(const string& url) {
 //g++ filehandler.cpp -o curl_fetch -lcurl
 // .\curl_fetch.exe
 
-int main()
+/*int main()
 {
    
-    curl_global_init(CURL_GLOBAL_ALL); 
+    /*curl_global_init(CURL_GLOBAL_ALL); 
     
     
     const string success_url = "https://www.example.com";
@@ -126,5 +126,5 @@ int main()
     curl_global_cleanup();
 
     return 0;
-}
+}*/
 
