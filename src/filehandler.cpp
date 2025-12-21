@@ -4,7 +4,7 @@
 #include <string>
 #include <fstream>
 #include <ctime>
-#include <sstream> // Needed for stringstream
+#include <sstream> 
 using namespace std; 
 
 void append_to_log(const string&url, size_t byte_count)

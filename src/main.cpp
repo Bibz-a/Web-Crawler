@@ -1,8 +1,50 @@
 #include <iostream>
+#include <vector>
+#include <curl/curl.h>
+#include "filehandler.h"
+#include "parser.h"
 using namespace std;
 
 int main() {
-    //the source folder will be containing all the cpp code, this file connects all the code
+   
+    curl_global_init(CURL_GLOBAL_ALL);
+    
+   
+    string startUrl = "https://www.example.com";
+    cout << "Fetching URL: " << startUrl << endl;
+    
+    // Call to filehandler.cpp
+    string htmlContent = http_get(startUrl);
+    
+    if (htmlContent.empty()) {
+        cout << "Error: Failed to fetch HTML content from " << startUrl << endl;
+        curl_global_cleanup();
+        return 1;
+    }
+    
+    cout << "Successfully fetched " << htmlContent.length() << " bytes of HTML content." << endl;
+    cout << "Parsing now" << endl;
+    
+    
+    vector<string> rawLinks = parseHTML(startUrl, htmlContent);
+    cout << "Found " << rawLinks.size() << " raw links in HTML." << endl;
+    
+   
+    vector<string> extractedUrls = resolveAndFilterLinks(rawLinks, startUrl);
+    
+    
+    cout << "Extracted URLs " << extractedUrls.size() << " valid links"  << endl;
+    for (int i = 0; i < extractedUrls.size(); i++) {
+        cout << (i + 1) << ". " << extractedUrls[i] << endl;
+    }
+    
+    if (extractedUrls.empty()) {
+        cout << "No valid URLs were extracted." << endl;
+    }
+    
+    // Cleanup curl
+    curl_global_cleanup();
+    
     return 0;
 }
 
