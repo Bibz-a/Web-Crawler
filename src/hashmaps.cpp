@@ -6,7 +6,7 @@ using namespace std;
 // Hash function
 int HashMap::hashFunction(string key) {
     unsigned long hash = 5381; // so we can store long numbers properly.
-    for (int i = 0; i < key.length(); i++) {
+    for (size_t i = 0; i < key.length(); i++) {
         hash = ((hash << 5) + hash) + key[i]; // hash * 33 + c. shift by 5 is multiplying by 2^5 basically, and add a hash, so its 33
     }
     return hash % TABLE_SIZE;
@@ -76,6 +76,7 @@ bool HashMap::contains(string key) {
 
 // Get the number of keys in the hashmap
 int HashMap::size() {
+    
     int count = 0;
     for (int i = 0; i < TABLE_SIZE; i++) {
         HashNode* curr = table[i];

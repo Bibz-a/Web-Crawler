@@ -17,7 +17,7 @@ void append_to_log(const string&url, size_t byte_count)
   }
 
 
-  ofstream logfile("fetcher.log", ios::app);
+  ofstream logfile("logs/fetcher.log", ios::app);
 
   if(logfile.is_open()){
         logfile << "[" << dt << "] ";
@@ -89,7 +89,7 @@ string http_get(const string& url) {
 /*int main()
 {
    
-    /*curl_global_init(CURL_GLOBAL_ALL); 
+    // curl_global_init(CURL_GLOBAL_ALL); 
     
     
     const string success_url = "https://www.example.com";

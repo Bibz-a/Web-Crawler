@@ -39,9 +39,3 @@ void mergesort(vector<string>& arr, int str, int end)
         merge(arr, str, mid, end);
     }
 }
-
-int main()
-{
-
-    return 0;
-}

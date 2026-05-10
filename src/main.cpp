@@ -7,6 +7,7 @@
 #include <cctype>
 #include <fstream>
 #include <algorithm>
+#include <filesystem>
 #include <curl/curl.h>
 #include <windows.h>
 #include "filehandler.h"
@@ -15,7 +16,7 @@
 #include "stack.h"
 #include "queue.h"
 #include "sorting.h"
-#include "Hashmap.h"
+#include "HashMap.h"
 using namespace std;
 
 // ANSI color codes for console output
@@ -167,9 +168,8 @@ void crawlBFS(Graph& graph, const string& startUrl, HashMap& visited, int maxDep
     // Custom Queue for BFS
     Queue<pair<string, int>> q; // pair of (URL, depth)
     q.enqueue(make_pair(startUrl, 0));
-    
-    int startIndex = graph.addNode(startUrl);
-    
+    graph.addNode(startUrl);
+
     while (!q.empty()) {
         pair<string, int> current = q.dequeue();
         string url = current.first;
@@ -222,9 +222,8 @@ void crawlDFS(Graph& graph, const string& startUrl, HashMap& visited, int maxDep
     // Custom Stack for DFS
     Stack<pair<string, int>> s; // pair of (URL, depth)
     s.push(make_pair(startUrl, 0));
-    
-    int startIndex = graph.addNode(startUrl);
-    
+    graph.addNode(startUrl);
+
     while (!s.empty()) {
         pair<string, int> current = s.pop();
         string url = current.first;
@@ -348,7 +347,7 @@ void searchUrl(HashMap& visited) {
 
 // Display log file
 void displayLogFile() {
-    const string logFileName = "fetcher.log";
+    const string logFileName = "logs/fetcher.log";
     ifstream logFile(logFileName);
     
     printSectionHeader("Crawler Log File");
@@ -360,7 +359,6 @@ void displayLogFile() {
     }
     
     string line;
-    int lineNumber = 1;
     int totalEntries = 0;
     
     // Count total lines first
@@ -450,10 +448,10 @@ void printGraphTree(Graph& graph, int nodeIndex, int depth, set<int>& printed, c
     }
     
     // Process neighbors
-    for (int i = 0; i < neighbors.size(); i++) {
+    for (size_t i = 0; i < neighbors.size(); i++) {
         string newPrefix = prefix;
         if (depth > 0) {
-            if (i == neighbors.size() - 1) {
+            if (i + 1 == neighbors.size()) {
                 newPrefix += "    "; // Last child
             } else {
                 newPrefix += "|   "; // Not last child
@@ -487,6 +485,9 @@ void generateSpanningTree(Graph& graph, Graph& spanningTree, int startIndex, set
 int main() {
     // Enable ANSI color codes on Windows
     enableAnsiColors();
+
+    std::filesystem::create_directories("logs");
+    std::filesystem::create_directories("data");
     
     curl_global_init(CURL_GLOBAL_ALL);
     

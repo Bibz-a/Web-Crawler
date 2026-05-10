@@ -15,6 +15,7 @@
 //   - Filtering duplicates is optional.
 //
 // TODO: Improve regex for <a href=""> extraction.
+#include "parser.h"
 #include <iostream>
 #include <regex>
 #include <string>
@@ -56,7 +57,7 @@ string resolveUrl(string base, string link)
         string origin = "";
         int slashCount = 0;
 
-        for (int i = 0; i < base.length(); i++)
+        for (size_t i = 0; i < base.length(); i++)
         {
             origin += base[i];
 
@@ -76,11 +77,11 @@ string resolveUrl(string base, string link)
     }
 
   // Relative link (about.html)
-    int schemePos = base.find("://");
-    int afterScheme = (schemePos == string::npos) ? 0 : schemePos + 3;
+    size_t schemePos = base.find("://");
+    size_t afterScheme = (schemePos == string::npos) ? 0 : schemePos + 3;
 
-    int firstSlashAfterDomain = base.find("/", afterScheme);
-    int lastSlash = base.find_last_of('/');
+    size_t firstSlashAfterDomain = base.find("/", afterScheme);
+    size_t lastSlash = base.find_last_of('/');
 
     // base is just domain: https://example.com
     if (firstSlashAfterDomain == string::npos)
@@ -97,7 +98,7 @@ vector<string> resolveAndFilterLinks(
 {
     vector<string> finalLinks;
 
-    for (int i = 0; i < rawLinks.size(); i++)
+    for (size_t i = 0; i < rawLinks.size(); i++)
     {
         // Step 1: validate
         if (isValidLink(rawLinks[i]))

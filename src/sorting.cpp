@@ -25,8 +25,8 @@ void merge(vector<string>& arr, int str, int mid, int end)
     while (j <= end)
         temp[count++] = arr[j++];
 
-    for (int k = 0; k < temp.size(); k++)
-        arr[str + k] = temp[k];
+    for (size_t k = 0; k < temp.size(); k++)
+        arr[str + static_cast<int>(k)] = temp[k];
 }
 
 void mergesort(vector<string>& arr, int str, int end)

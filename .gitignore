@@ -1,0 +1,17 @@
+# Build artifacts
+*.exe
+*.o
+*.obj
+webcrawler
+webcrawler.exe
+
+# Logs and generated data
+logs/*.log
+data/*
+!data/.gitkeep
+
+# Local-only planning (not committed)
+FUTURE_PLAN.local.md
+
+# IDE
+.idea/

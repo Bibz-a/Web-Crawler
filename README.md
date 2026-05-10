@@ -1,158 +1,188 @@
-# Web-Crawler : Semester #03 Project for CS-221
-# **WebCrawler – DSA Project**
+# WebCrawler
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-##""THIS IS JUST INITIAL STUFF- MIGHT BE CHANGED AS WE GO ON!"
-
-
-A lightweight web crawler built **from scratch**, using **custom data structures** (Graph, Queue, Stack, Sorting, FileHandler).  
-No STL containers like `vector`, `queue`, `stack` are used—only dynamic arrays and linked lists implemented manually.
-
-This crawler:
-- Fetches a starting URL
-- Extracts all outbound links
-- Stores links in a custom Graph structure
-- Traverses the graph using **BFS** or **DFS**
-- Saves results in `/data` using FileHandler
-
+**CS-221 — Data Structures & Algorithms (Semester 3)**  
+An interactive **web crawler** and graph explorer built **from scratch** with **custom data structures** (queue, stack, hash map, merge sort on custom workflows, graph with BFS/DFS). It uses **libcurl** for HTTP fetch and a **terminal menu** for crawling, inspection, and logs.
 
 ---
 
-# **How the System Works**
+## Table of contents
 
-### **1. main.cpp**
-- Loads the starting URL  
-- Creates a Graph  
-- Calls BFS or DFS from Graph  
-- Sends HTML to Parser  
-- Writes results using FileHandler  
-- Prints final summary: number of pages visited, links extracted, crawl depth
-
----
-
-### **2. Parser**
-- Extracts URLs from raw HTML  
-- Removes duplicates  
-- Normalizes URLs  
-- Returns a list of extracted links  
+- [Overview](#overview)
+- [Features](#features)
+- [Repository layout](#repository-layout)
+- [How it works](#how-it-works)
+- [Build & run](#build--run)
+- [Interactive menu](#interactive-menu)
+- [Ethical crawling](#ethical-crawling)
+- [Project timeline & team](#project-timeline--team)
+- [License](#license)
 
 ---
 
-### **3. Graph**
-- Implemented using adjacency lists (dynamic arrays or linked lists)  
-- Functions:
-  - `addNode(url)`
-  - `addEdge(u, v)`
-  - `getNeighbors(url)`
-  - `BFS(startURL)`
-  - `DFS(startURL)`
+## Overview
+
+The program starts from a **seed URL**, downloads HTML, extracts links with a **parser**, and builds a **directed graph** of discovered pages. You can traverse the site with **BFS** (breadth-first) or **DFS** (depth-first), view a **spanning tree**, **sort** URLs with merge sort, **search** the visited set, and read **fetch logs**.
+
+Custom **Queue** and **Stack** implementations (linked lists, no STL `queue`/`stack`) back BFS and DFS. A custom **HashMap** tracks visited URLs. The **Graph** module stores adjacency structure for the crawl frontier and results.
+
+> **Note:** Some modules (for example the graph’s internal storage) may still use standard library types where appropriate for the course design; the core crawl ordering structures are custom as required by the project brief.
 
 ---
 
-### **4. Queue (custom)**
-Needed for **BFS**  
-- Dynamic linked list implementation  
-- Functions:
-  - `enqueue(data)`
-  - `dequeue()`
-  - `isEmpty()`
+## Features
 
-### **5. Stack (custom)**
-Needed for **DFS**  
-- Dynamic linked list or array implementation  
-- Functions:
-  - `push(data)`
-  - `pop()`
-  - `isEmpty()`
+| Area | What you get |
+|------|----------------|
+| **Crawl** | BFS or DFS with configurable depth |
+| **Graph** | Add nodes/edges, neighbors, URL ↔ index mapping |
+| **Parser** | Extract `href` links, resolve relative URLs, filter invalid schemes |
+| **Sorting** | Alphabetical URL list via merge sort |
+| **Persistence** | HTTP fetch log under `logs/` |
+| **UX** | Colored terminal UI on Windows (VT mode + UTF-8) |
 
 ---
 
-### **6. Sorting**
-Used to:
-- Sort extracted links alphabetically before saving  
-- Sort nodes for clean output  
+## Repository layout
+
+```text
+Web-Crawler/
+├── include/          # Public headers (.h)
+├── src/              # Implementation (.cpp)
+├── data/             # Reserved for crawl output / artifacts (.gitkeep)
+├── logs/             # fetcher.log (created at runtime; log files gitignored)
+├── LICENSE           # MIT
+├── Makefile          # Build from repo root
+└── README.md
+```
 
 ---
 
-### **7. FileHandler**
-Manages:
-- Saving crawled URLs  
-- Storing graph adjacency lists  
-- Writing summary logs  
-- Saving sorted URLs  
+## How it works
+
+High-level pipeline:
+
+```mermaid
+flowchart LR
+  A[Seed URL] --> B[HTTP GET via libcurl]
+  B --> C[Parser: extract & normalize links]
+  C --> D[Graph: nodes & edges]
+  D --> E[BFS or DFS]
+  E --> F[HashMap: visited set]
+  F --> G[Menus: tree, sort, search, logs]
+```
+
+<details>
+<summary><strong>Module cheat-sheet</strong> (click to expand)</summary>
+
+| Module | Role |
+|--------|------|
+| `main.cpp` | Interactive menu, crawl orchestration, spanning tree display, log viewer |
+| `parser` | `parseHTML`, `resolveAndFilterLinks` |
+| `Graph` | `addNode`, `addEdge`, `getNeighbors`, BFS/DFS helpers via crawl logic |
+| `Queue` / `Stack` | FIFO / LIFO for BFS / DFS |
+| `HashMap` | Visited URL set and lookup |
+| `sorting` | Merge sort for URL lists |
+| `filehandler` | `http_get`, fetch logging |
+
+</details>
 
 ---
 
-# **Team Work Breakdown (Important)**
+## Build & run
 
-### ** Member 1 – Core Data Structures**
-Responsible for:
-- Queue (linked list)
-- Stack (linked list or array)
-- Sorting algorithms (Merge Sort / Quick Sort)
-- Basic unit tests for these structures
+### Prerequisites
 
-**Note:**  
-Complete these first — other modules depend on Queue & Stack. ****
+- **C++17** compiler (e.g. **g++** from [MSYS2](https://www.msys2.org/) UCRT64 on Windows)
+- **libcurl** development package linked with `-lcurl`
+- Run builds from the **repository root** so paths like `logs/fetcher.log` resolve correctly
 
----
+### Build
 
-### **Member 2 – Graph + Traversal**
-Responsible for:
-- Graph node storage  
-- Edges implementation  
-- URL → integer ID mapping  
-- BFS (requires Queue)  
-- DFS (requires Stack)  
-- Communication with Parser  
+**Option A — Makefile** (from MSYS2 UCRT64 / MinGW shell, or if `make` is on your `PATH`; on some Windows setups use `mingw32-make`):
 
-**Advice:**  
- Build graph skeleton first, plug BFS/DFS later.
+```bash
+make
+```
 
----
+Produces `webcrawler` (on Windows, `webcrawler.exe`).
 
-### **Team Member 3 – Parser + FileHandler + Integration**
-Responsible for:
-- Extracting URLs from HTML
-- Removing duplicates
-- Normalizing relative links  
-- File writing (.txt, logs, results)
-- Final integration inside `main.cpp`
+**Option B — Manual g++** (adjust compiler path if needed):
 
-**Advice:**  
-Parser is the hardest part — start early.
+```bash
+g++ -std=c++17 -Wall -g -Iinclude -o webcrawler.exe ^
+  src/main.cpp src/parser.cpp src/Graph.cpp src/filehandler.cpp ^
+  src/sorting.cpp src/hashmaps.cpp src/dynamicarray.cpp src/queue.cpp src/stack.cpp ^
+  -lcurl
+```
 
----
+> `src/mergesort.cpp` is a duplicate of the merge sort in `sorting.cpp` and is **not** linked in the default build to avoid duplicate symbols.
 
+### Run
 
-### **Week 1**
-- Queue, Stack completed  
-- Graph structure defined  
-- Basic HTML fetch logic tested  
+From the **repo root**:
 
-### **Week 2**
-- Parser implemented and tested  
-- BFS/DFS fully working  
-- Graph + Parser integration done  
+```bash
+./webcrawler.exe
+```
 
-### **Week 3**
-- FileHandler and Sorting  
-- Full pipeline: HTML → Parser → Graph  
-- Debugging + cleanup  
-- Documentation (README, comments, UML optional)
+On first run, `logs/` and `data/` are created automatically if missing.
 
 ---
 
-# ⚠️ **Crawling Safety**
-- The crawler uses delays to avoid high request rates  
-- Prevents accidental site overload  
-- Follows basic ethical crawling guidelines
+## Interactive menu
+
+After launch, use the numbered **MAIN MENU**:
+
+| # | Action |
+|---|--------|
+| **1** | **Start crawling** — enter URL (`http://` or `https://`), max depth, choose **B**FS or **D**FS |
+| **2** | **Spanning tree** of the last crawl (DFS-based tree view) |
+| **3** | **List all** crawled URLs |
+| **4** | **Sorted URLs** (merge sort) |
+| **5** | **Search** for a URL in the visited set |
+| **6** | **Log file** — view all or the last 20/50 lines of `logs/fetcher.log` |
+| **7** | **Exit** |
+
+Tips:
+
+- Complete a crawl with **1** before options **2–5** that depend on graph data.
+- Respect site owners: use small depth and allowed test domains (see below).
 
 ---
 
-Date Started: 22/11/2025
+## Ethical crawling
 
-Done by:
-Labiba Ahmad - 2024260
-Maimoona Saboor - 2024270
-Qurat ulain - 2024526
+- Use **reasonable depth limits** and avoid hammering production servers.
+- Prefer **test or demo sites** you are allowed to crawl.
+- Honor **robots.txt** and terms of service for real targets (this educational crawler is **not** a full compliance suite—use it responsibly).
+
+---
+
+## Project timeline & team
+
+<details>
+<summary><strong>Original week plan</strong></summary>
+
+- **Week 1:** Queue, stack, graph skeleton, basic HTTP fetch  
+- **Week 2:** Parser, BFS/DFS, graph + parser integration  
+- **Week 3:** File handler, sorting, full pipeline, documentation  
+
+</details>
+
+**Contributors**
+
+| Name | ID |
+|------|-----|
+| Labiba Ahmad | 2024260 |
+| Maimoona Saboor | 2024270 |
+| Qurat ulain | 2024526 |
+
+*Project start: 22 November 2025*
+
+---
+
+## License
+
+This project is released under the [MIT License](LICENSE).

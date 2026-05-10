@@ -27,7 +27,7 @@ int Graph::addNode(const string& url) {
 
 // Add directed edge u -> v
 void Graph::addEdge(int u, int v) {
-    if (u < 0 || v < 0 || u >= adj.size() || v >= adj.size()) //check valid indices
+    if (u < 0 || v < 0 || static_cast<size_t>(u) >= adj.size() || static_cast<size_t>(v) >= adj.size()) //check valid indices
         return;
 
     if (!edgeExists(u, v))
@@ -41,28 +41,28 @@ vector<int>& Graph::getNeighbors(int u) {
 
 // URL -> index
 int Graph::getIndex(const string& url) {
-    for (int i = 0; i < urls.size(); i++) {
+    for (size_t i = 0; i < urls.size(); i++) {
         if (urls[i] == url)
-            return i;
+            return static_cast<int>(i);
     }
     return -1; //url isnt added yet
 }
 
 // Get URL by index
 string Graph::getUrl(int index) {
-    if (index < 0 || index >= urls.size())
+    if (index < 0 || static_cast<size_t>(index) >= urls.size())
         return "";
     return urls[index];
 }
 
 // Get total number of nodes
 int Graph::getNodeCount() {
-    return urls.size();
+    return static_cast<int>(urls.size());
 }
 
 // Debug print
 void Graph::printGraph() {
-    for (int i = 0; i < urls.size(); i++) {
+    for (size_t i = 0; i < urls.size(); i++) {
         cout << urls[i] << " -> ";
         for (int v : adj[i]) {
             cout << urls[v] << " ";
