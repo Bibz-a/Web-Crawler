@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRAWLER</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar__head">
+        <h1 class="sidebar__wordmark">CRAWLER</h1>
+        <div class="status-pill" id="status-pill">
+          <span class="status-pill__dot" aria-hidden="true">●</span>
+          <span class="status-pill__label" id="status-pill-label">IDLE</span>
+        </div>
+      </div>
+
+      <nav class="sidebar__nav" aria-label="Main navigation">
+        <button class="nav-item nav-item--active" data-view="dashboard">DASHBOARD</button>
+        <button class="nav-item" data-view="jobs">CRAWL JOBS</button>
+        <button class="nav-item" data-view="link-graph">LINK GRAPH</button>
+        <button class="nav-item" data-view="results">RESULTS</button>
+        <button class="nav-item" data-view="settings">SETTINGS</button>
+      </nav>
+
+      <div class="sidebar__sys" aria-label="System readout">
+        <div class="sys-row">
+          <span class="sys-row__label">MEM</span>
+          <span class="sys-row__value">
+            <span class="sys-swap" id="sys-mem" data-value="">
+              <span class="sys-swap__val">—</span>
+            </span>
+          </span>
+        </div>
+        <div class="sys-row">
+          <span class="sys-row__label">THREADS</span>
+          <span class="sys-row__value">
+            <span class="sys-swap" id="sys-threads" data-value="">
+              <span class="sys-swap__val">—</span>
+            </span>
+          </span>
+        </div>
+        <div class="sys-row">
+          <span class="sys-row__label">QUEUE</span>
+          <span class="sys-row__value">
+            <span class="sys-swap" id="sys-queue" data-value="">
+              <span class="sys-swap__val">—</span>
+            </span>
+          </span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="content">
+        <!-- Dashboard -->
+        <section class="view view--active" id="view-dashboard">
+          <header class="dash-bar">
+            <div class="dash-bar__left">
+              <span class="dash-bar__job" id="dash-job-name">JOB_2024_11_crawl-docs</span>
+              <span class="dash-bar__badge dash-bar__badge--hidden" id="dash-job-badge">◆ RUNNING</span>
+            </div>
+            <div class="dash-bar__stats">
+              <span class="dash-bar__stat" id="dash-stat-depth">DEPTH 3/5</span>
+              <span class="dash-bar__stat" id="dash-stat-speed">SPEED 84 req/s</span>
+              <span class="dash-bar__stat" id="dash-stat-uptime">UPTIME 00:14:32</span>
+            </div>
+          </header>
+
+          <div class="dash-grid">
+            <div class="dash-panel dash-panel--queue">
+              <div class="dash-panel__header">CRAWL QUEUE</div>
+              <div class="dash-list" id="queue-list">
+                <p class="dash-list__empty">No URLs in queue.</p>
+              </div>
+            </div>
+
+            <div class="dash-panel dash-panel--stats">
+              <div class="dash-panel__header">STATS</div>
+              <div class="stat-blocks">
+                <div class="stat-block">
+                  <span class="stat-block__value" id="metric-pages" data-target="1247">0</span>
+                  <span class="stat-block__label">Pages Crawled</span>
+                </div>
+                <div class="stat-block">
+                  <span class="stat-block__value" id="metric-errors" data-target="3">0</span>
+                  <span class="stat-block__label">Errors</span>
+                </div>
+                <div class="stat-block">
+                  <span class="stat-block__value" id="metric-response" data-target="142">0</span>
+                  <span class="stat-block__label">Avg Response</span>
+                </div>
+                <div class="stat-block">
+                  <span class="stat-block__value" id="metric-data" data-target="48.2" data-suffix=" MB">0</span>
+                  <span class="stat-block__label">Data Collected</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="dash-panel dash-panel--errors">
+              <div class="dash-panel__header">
+                <span>ERRORS</span>
+                <span class="count-badge" id="error-count">0</span>
+              </div>
+              <div class="dash-list dash-list--errors" id="error-list">
+                <p class="dash-list__empty">No errors recorded.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Results -->
+        <section class="view view--padded" id="view-results">
+          <div class="card card--full">
+            <div class="card__header">
+              <h2 class="card__title">Discovered URLs</h2>
+              <div class="card__actions">
+                <input class="field__input field__input--search" type="search" id="url-search" placeholder="Filter URLs…">
+                <button class="btn btn--ghost btn--sm" id="btn-sort-urls">Merge Sort</button>
+              </div>
+            </div>
+            <div class="url-table-wrap">
+              <table class="url-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>URL</th>
+                    <th>Depth</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="url-table-body"></tbody>
+              </table>
+              <p class="empty-state" id="urls-empty">No URLs crawled yet. Start a job from the dashboard.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Link Graph -->
+        <section class="view" id="view-link-graph">
+          <header class="linkgraph-bar">
+            <span class="linkgraph-bar__title">LINK GRAPH</span>
+            <span class="linkgraph-bar__meta" id="linkgraph-meta">2,847 nodes · 14,302 edges</span>
+          </header>
+          <div class="linkgraph-canvas" id="linkgraph-container">
+            <div class="linkgraph-tooltip" id="linkgraph-tooltip" hidden></div>
+          </div>
+          <div class="linkgraph-filters" role="toolbar" aria-label="Graph filters">
+            <button type="button" class="graph-filter graph-filter--active" data-filter="errors">SHOW ERRORS</button>
+            <button type="button" class="graph-filter graph-filter--active" data-filter="external">SHOW EXTERNAL</button>
+            <button type="button" class="graph-filter" data-filter="depth2">DEPTH ≤ 2</button>
+            <button type="button" class="graph-filter" data-filter="depth3">DEPTH ≤ 3</button>
+          </div>
+        </section>
+
+        <!-- Crawl Jobs -->
+        <section class="view" id="view-jobs">
+          <div class="crawl-job-panel">
+            <div class="crawl-job-panel__form">
+              <h2 class="crawl-job-panel__heading">NEW CRAWL JOB</h2>
+              <form class="crawl-job-form" id="crawl-form" novalidate>
+                <div class="crawl-field">
+                  <label class="crawl-field__label" for="seed-urls">Seed URL(s)</label>
+                  <textarea class="crawl-field__input crawl-field__textarea" id="seed-urls" rows="4" placeholder="https://example.com&#10;https://docs.example.com" spellcheck="false">https://example.com</textarea>
+                </div>
+
+                <div class="crawl-field">
+                  <label class="crawl-field__label">Max Depth</label>
+                  <div class="stepper" id="depth-stepper">
+                    <button type="button" class="stepper__btn" data-action="dec" aria-label="Decrease depth">−</button>
+                    <span class="stepper__value" id="crawl-depth-display">3</span>
+                    <button type="button" class="stepper__btn" data-action="inc" aria-label="Increase depth">+</button>
+                    <input type="hidden" id="crawl-depth" name="maxDepth" value="3">
+                  </div>
+                </div>
+
+                <div class="crawl-field">
+                  <label class="crawl-field__label">Traversal</label>
+                  <div class="segmented" id="crawl-traversal" role="group" aria-label="Traversal method">
+                    <button type="button" class="segmented__btn segmented__btn--active" data-traversal="bfs">BFS</button>
+                    <button type="button" class="segmented__btn" data-traversal="dfs">DFS</button>
+                  </div>
+                </div>
+
+                <div class="crawl-field">
+                  <label class="crawl-field__label" for="crawl-threads">
+                    Max Threads
+                    <span class="crawl-field__hint" id="crawl-threads-value">8</span>
+                  </label>
+                  <div class="custom-slider">
+                    <div class="custom-slider__track">
+                      <div class="custom-slider__fill" id="threads-fill"></div>
+                    </div>
+                    <input type="range" class="custom-slider__input" id="crawl-threads" min="1" max="16" value="8">
+                  </div>
+                </div>
+
+                <div class="crawl-field">
+                  <label class="crawl-field__label">Respect robots.txt</label>
+                  <div class="flat-toggle" id="robots-toggle" role="group" aria-label="Respect robots.txt">
+                    <button type="button" class="flat-toggle__opt flat-toggle__opt--active" data-value="true">ON</button>
+                    <button type="button" class="flat-toggle__opt" data-value="false">OFF</button>
+                  </div>
+                </div>
+
+                <div class="crawl-field">
+                  <label class="crawl-field__label" for="url-filters-input">URL Filters</label>
+                  <div class="tag-input" id="tag-input">
+                    <div class="tag-input__tags" id="url-filters-tags"></div>
+                    <input type="text" class="tag-input__field" id="url-filters-input" placeholder="*.pdf — press Enter" autocomplete="off" spellcheck="false">
+                  </div>
+                </div>
+
+                <div class="crawl-field">
+                  <label class="crawl-field__label">Output format</label>
+                  <div class="segmented" id="output-format" role="group" aria-label="Output format">
+                    <button type="button" class="segmented__btn segmented__btn--active" data-format="json">JSON</button>
+                    <button type="button" class="segmented__btn" data-format="csv">CSV</button>
+                    <button type="button" class="segmented__btn" data-format="sqlite">SQLITE</button>
+                  </div>
+                </div>
+
+                <button type="submit" class="crawl-launch" id="btn-start">LAUNCH CRAWL</button>
+                <button type="button" class="crawl-stop" id="btn-stop" disabled>ABORT CRAWL</button>
+              </form>
+            </div>
+
+            <div class="crawl-job-panel__preview">
+              <div class="crawl-preview__header">CONFIG PREVIEW</div>
+              <pre class="crawl-preview__json" id="crawl-config-preview" aria-live="polite"></pre>
+            </div>
+          </div>
+
+          <div class="crawl-job-log">
+            <div class="crawl-job-log__header">
+              <span>FETCHER LOG</span>
+              <select class="crawl-field__input crawl-field__input--compact" id="log-limit">
+                <option value="all">All entries</option>
+                <option value="50" selected>Last 50</option>
+                <option value="20">Last 20</option>
+              </select>
+            </div>
+            <div class="log-viewer log-viewer--compact" id="log-viewer"></div>
+          </div>
+        </section>
+
+        <!-- Settings -->
+        <section class="view" id="view-settings">
+          <div class="settings-panel">
+            <div class="settings-panel__main">
+              <div class="settings-panel__head">
+                <h2 class="settings-panel__title">SETTINGS</h2>
+                <span class="settings-panel__status" id="settings-status" hidden>Saved</span>
+              </div>
+
+              <div class="settings-section">
+                <h3 class="settings-section__label">Engine defaults</h3>
+                <p class="settings-section__desc">Global limits applied to every crawl job. Job-specific options are configured under CRAWL JOBS.</p>
+                <div class="settings-grid">
+                  <div class="crawl-field">
+                    <label class="crawl-field__label" for="settings-delay">Request delay (ms)</label>
+                    <input class="crawl-field__input" type="number" id="settings-delay" min="0" max="10000" step="50" value="250">
+                  </div>
+
+                  <div class="crawl-field">
+                    <label class="crawl-field__label" for="settings-max-pages">Max pages (0 = ∞)</label>
+                    <input class="crawl-field__input" type="number" id="settings-max-pages" min="0" max="100000" value="0">
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3 class="settings-section__label">Paths &amp; logs</h3>
+                <div class="settings-paths">
+                  <div class="settings-path">
+                    <span class="settings-path__key">Data output</span>
+                    <code class="settings-path__val">Web-Crawler/data/</code>
+                  </div>
+                  <div class="settings-path">
+                    <span class="settings-path__key">Fetcher log</span>
+                    <code class="settings-path__val">Web-Crawler/logs/fetcher.log</code>
+                  </div>
+                  <div class="crawl-field">
+                    <label class="crawl-field__label" for="settings-log-limit">Log viewer default</label>
+                    <select class="crawl-field__input" id="settings-log-limit">
+                      <option value="all">All entries</option>
+                      <option value="50" selected>Last 50</option>
+                      <option value="20">Last 20</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-actions">
+                <button type="button" class="crawl-launch settings-actions__save" id="settings-save">SAVE SETTINGS</button>
+                <button type="button" class="crawl-stop" id="settings-reset">RESET DEFAULTS</button>
+              </div>
+              <p class="settings-note">Stored in browser localStorage. Crawl job fields live under CRAWL JOBS.</p>
+            </div>
+
+            <aside class="settings-panel__goals">
+              <div class="goals-head">
+                <span class="goals-head__title">FUTURE GOALS</span>
+                <span class="goals-head__progress" id="goals-progress">0 / 0 complete</span>
+              </div>
+              <p class="goals-head__sub">Local backlog — track progress here; mirrors project roadmap.</p>
+              <div class="goals-board" id="goals-board"></div>
+            </aside>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="license-dialog" id="license-dialog" hidden aria-hidden="true">
+    <div class="license-dialog__panel" role="dialog" aria-labelledby="license-title">
+      <h2 class="license-dialog__title" id="license-title">DSA PROJECT</h2>
+      <p class="license-dialog__meta">MIT License · CS-221 Data Structures &amp; Algorithms</p>
+      <pre class="license-dialog__body">Copyright (c) 2025–2026 Labiba Ahmad, Maimoona Saboor, and Qurat ulain
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+      <button type="button" class="crawl-stop" id="license-close">CLOSE</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
