@@ -20,8 +20,6 @@ export const GOAL_SECTIONS = [
 
     items: [
 
-      'Respect robots.txt (fetch, parse, filter)',
-
       'Optional delay / rate limit between requests',
 
       'Max pages cap in addition to depth',

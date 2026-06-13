@@ -6,6 +6,8 @@ import { CrawlJobForm } from './crawl-form.js';
 import { loadSettings } from './settings-store.js';
 import { SettingsPanel } from './settings-panel.js';
 import { initLicenseDialog } from './license.js';
+import { CrawlHistoryPage } from './crawl-history.js';
+import { ResultsPage } from './results-page.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -37,9 +39,13 @@ function boot() {
     if (logLimit) logLimit.value = next.logLimit || '50';
   });
   const engine = new CrawlerEngine();
+  const resultsPage = new ResultsPage();
+  const historyPage = new CrawlHistoryPage((results, seedUrl) => {
+    linkGraph.loadFromResults(results, seedUrl);
+    switchView('link-graph');
+  });
   initSidebarSys(engine);
 
-  let sortedMode = false;
   let crawlMaxDepth = 3;
   let activeTraversal = 'bfs';
 
@@ -50,46 +56,6 @@ function boot() {
   function setEngineStatus(running) {
     setStatusPill(running);
     crawlForm.setRunning(running);
-  }
-
-  function renderUrlTable(filter = '') {
-    const tbody = $('#url-table-body');
-    const empty = $('#urls-empty');
-    tbody.innerHTML = '';
-
-    let urls = engine.nodes;
-    if (sortedMode) {
-      const sorted = engine.getSortedUrls();
-      urls = sorted.map((url) => engine.nodes.find((n) => n.url === url)).filter(Boolean);
-    }
-
-    const q = filter.toLowerCase();
-    const filtered = q ? urls.filter((n) => n.url.toLowerCase().includes(q)) : urls;
-
-    if (filtered.length === 0) {
-      empty.style.display = 'block';
-      return;
-    }
-
-    empty.style.display = 'none';
-    filtered.forEach((node, i) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td class="col-num">${String(i + 1).padStart(3, '0')}</td>
-        <td>${escapeHtml(node.url)}</td>
-        <td class="col-depth">${node.depth}</td>
-        <td class="col-status"><span class="status-badge status-badge--${node.status}">${node.status}</span></td>
-      `;
-      tbody.appendChild(tr);
-    });
-  }
-
-  function escapeHtml(str) {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
   }
 
   function renderLogs(limit = '50') {
@@ -126,7 +92,8 @@ function boot() {
       n.classList.toggle('nav-item--active', n.dataset.view === viewId);
     });
 
-    if (viewId === 'results') renderUrlTable($('#url-search').value);
+    if (viewId === 'results') resultsPage.refresh();
+    if (viewId === 'history') historyPage.refresh();
     if (viewId === 'link-graph') linkGraph.resize();
     if (viewId === 'jobs') renderLogs($('#log-limit').value);
     if (viewId === 'dashboard' && !dashboard.liveMode) {
@@ -152,7 +119,6 @@ function boot() {
     activeTraversal = config.traversal;
 
     linkGraph.clearForCrawl(url);
-    sortedMode = false;
 
     setEngineStatus(true);
 
@@ -161,7 +127,7 @@ function boot() {
 
     switchView('dashboard');
 
-    engine.start(url, crawlMaxDepth, activeTraversal).catch((err) => {
+    engine.start(url, crawlMaxDepth, activeTraversal, config.respectRobots).catch((err) => {
       setEngineStatus(false);
       dashboard.addError('CRAWL_ERR', err.message);
     });
@@ -171,16 +137,6 @@ function boot() {
     engine.stop();
     setEngineStatus(false);
     dashboard.abortCrawl();
-  });
-
-  $('#url-search').addEventListener('input', (e) => {
-    renderUrlTable(e.target.value);
-  });
-
-  $('#btn-sort-urls').addEventListener('click', () => {
-    sortedMode = !sortedMode;
-    $('#btn-sort-urls').textContent = sortedMode ? 'Original Order' : 'Merge Sort';
-    renderUrlTable($('#url-search').value);
   });
 
   $('#log-limit').addEventListener('change', (e) => {
@@ -209,8 +165,6 @@ function boot() {
       });
       dashboard.renderQueue();
     }
-
-    renderUrlTable($('#url-search').value);
   });
 
   engine.on('log', (entry) => {
@@ -242,6 +196,7 @@ function boot() {
     setEngineStatus(false);
     dashboard.finishCrawl();
     linkGraph.syncFromEngine(engine);
+    resultsPage.refresh();
     renderLogs($('#log-limit').value);
   });
 

@@ -1,4 +1,5 @@
 import * as d3 from './vendor/d3.bundle.mjs';
+import { fetchCrawlResults } from './api.js';
 
 function getOrigin(url) {
   try {
@@ -30,6 +31,7 @@ export class LinkGraph {
 
     this._initSvg();
     this._bindFilters();
+    this._bindExport();
     this._bindResize();
     this._updateMeta(0, 0);
     this._startBreathing();
@@ -123,6 +125,121 @@ export class LinkGraph {
       this.simulation.force('center', d3.forceCenter(this.width / 2, this.height / 2));
       this.simulation.alpha(0.08).restart();
     }
+  }
+
+  _bindExport() {
+    const btn = document.getElementById('graph-export-btn');
+    const menu = document.getElementById('graph-export-menu');
+    if (!btn || !menu) return;
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+    });
+
+    document.addEventListener('click', () => {
+      menu.hidden = true;
+    });
+
+    menu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const item = e.target.closest('[data-export]');
+      if (!item) return;
+      menu.hidden = true;
+      const kind = item.dataset.export;
+      if (kind === 'png') this._exportPng();
+      else if (kind === 'csv') this._exportCsv();
+      else if (kind === 'json') this._exportJson();
+    });
+  }
+
+  _exportTimestamp() {
+    return new Date().toISOString().replace(/[:.]/g, '-');
+  }
+
+  _downloadBlob(filename, blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async _exportPng() {
+    const panel = document.getElementById('view-link-graph');
+    if (!panel || typeof html2canvas !== 'function') return;
+    const canvas = await html2canvas(panel);
+    canvas.toBlob((blob) => {
+      if (blob) this._downloadBlob(`crawl-graph-${this._exportTimestamp()}.png`, blob);
+    });
+  }
+
+  _getExportRows() {
+    const inbound = new Map();
+    for (const link of this.allLinks) {
+      const target = typeof link.target === 'object' ? link.target.id : link.target;
+      inbound.set(target, (inbound.get(target) || 0) + 1);
+    }
+
+    return this.allNodes.map((n) => ({
+      url: n.url,
+      depth: n.depth,
+      statusCode: n.failed ? 404 : 200,
+      responseMs: n.crawlTime ? n.crawlTime.replace('ms', '') : '',
+      inboundLinks: inbound.get(n.id) || 0,
+    }));
+  }
+
+  _exportCsv() {
+    const rows = this._getExportRows();
+    const header = 'url,depth,statusCode,responseMs,inboundLinks';
+    const lines = rows.map((row) => [
+      `"${String(row.url).replace(/"/g, '""')}"`,
+      row.depth,
+      row.statusCode,
+      row.responseMs,
+      row.inboundLinks,
+    ].join(','));
+    const csv = [header, ...lines].join('\n');
+    this._downloadBlob(
+      `crawl-results-${this._exportTimestamp()}.csv`,
+      new Blob([csv], { type: 'text/csv' })
+    );
+  }
+
+  async _exportJson() {
+    const data = await fetchCrawlResults();
+    this._downloadBlob(
+      `crawl-results-${this._exportTimestamp()}.json`,
+      new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    );
+  }
+
+  loadFromResults(results, seedUrl) {
+    const nodes = Array.isArray(results.nodes) ? results.nodes : [];
+    const edges = Array.isArray(results.edges) ? results.edges : [];
+    if (!nodes.length) return;
+
+    this.seedOrigin = getOrigin(seedUrl);
+    this.allNodes = nodes.map((n) => ({
+      id: n.url,
+      url: n.url,
+      depth: n.depth ?? 0,
+      failed: Boolean(n.failed),
+      isSeed: n.url === seedUrl || n.depth === 0,
+      external: this._isExternal(n.url),
+      statusCode: n.failed ? 404 : 200,
+      crawlTime: '—',
+    }));
+
+    this.allLinks = edges.map((e) => ({
+      source: e.from,
+      target: e.to,
+    }));
+
+    this._updateMeta(this.allNodes.length, this.allLinks.length);
+    this._renderFiltered();
   }
 
   syncFromEngine(engine, responseMs) {
@@ -228,11 +345,15 @@ export class LinkGraph {
 
     merged.select('circle')
       .attr('r', (d) => (d.isSeed ? 9 : 5))
-      .attr('fill', (d) => (d.failed ? '#0D0D0D' : d.isSeed ? '#111111' : '#0D0D0D'))
+      .attr('fill', (d) => {
+        if (d.failed) return '#0D0D0D';
+        if (d.isSeed) return '#111111';
+        return '#1a1a1a';
+      })
       .attr('stroke', (d) => {
         if (d.failed) return '#FF3B3B';
         if (d.isSeed) return '#00FF41';
-        return '#1F1F1F';
+        return '#E8E8E8';
       })
       .attr('stroke-width', (d) => (d.isSeed ? 2 : 1));
 

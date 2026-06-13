@@ -80,6 +80,7 @@ function buildPreviewHtml(display, rawSeeds) {
 export class CrawlJobForm {
   constructor(settings = null) {
     this.defaultTraversal = 'bfs';
+    this.respectRobots = true;
     this.minDepth = 1;
     this.maxDepthLimit = 10;
 
@@ -89,9 +90,12 @@ export class CrawlJobForm {
     this.previewEl = $('#crawl-config-preview');
     this.launchBtn = $('#btn-start');
     this.stopBtn = $('#btn-stop');
+    this.robotsYes = $('#robots-yes');
+    this.robotsNo = $('#robots-no');
 
     this._bindStepper();
     this._bindTraversal();
+    this._bindRobots();
     this._bindPreview();
 
     if (settings) this.applyDefaults(settings);
@@ -114,6 +118,7 @@ export class CrawlJobForm {
       seeds,
       maxDepth: parseInt(this.depthInput.value, 10) || 3,
       traversal: this.defaultTraversal,
+      respectRobots: this.respectRobots,
     };
   }
 
@@ -128,6 +133,7 @@ export class CrawlJobForm {
       seeds: rawSeeds,
       maxDepth: config.maxDepth,
       traversal: config.traversal,
+      respectRobots: config.respectRobots,
     };
 
     this.previewEl.innerHTML = buildPreviewHtml(display, rawSeeds);
@@ -137,6 +143,8 @@ export class CrawlJobForm {
     this.launchBtn.disabled = running;
     this.stopBtn.disabled = !running;
     this.seedsEl.disabled = running;
+    this.robotsYes.disabled = running;
+    this.robotsNo.disabled = running;
   }
 
   _bindStepper() {
@@ -165,6 +173,19 @@ export class CrawlJobForm {
       });
       this.renderPreview();
     });
+  }
+
+  _bindRobots() {
+    const setRobots = (enabled) => {
+      this.respectRobots = enabled;
+      this.robotsYes?.classList.toggle('flat-toggle__opt--active', enabled);
+      this.robotsNo?.classList.toggle('flat-toggle__opt--active', !enabled);
+      this.renderPreview();
+    };
+
+    this.robotsYes?.addEventListener('click', () => setRobots(true));
+    this.robotsNo?.addEventListener('click', () => setRobots(false));
+    setRobots(this.respectRobots);
   }
 
   _bindPreview() {

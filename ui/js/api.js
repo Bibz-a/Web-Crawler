@@ -17,11 +17,11 @@ async function throwHttpError(res, label) {
   throw err;
 }
 
-export async function startCrawl({ seedUrl, depth, traversal }) {
+export async function startCrawl({ seedUrl, depth, traversal, respectRobots }) {
   const res = await fetch(`${getApiBase()}/api/crawl/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ seedUrl, depth, traversal }),
+    body: JSON.stringify({ seedUrl, depth, traversal, respectRobots }),
   });
   if (!res.ok) {
     await throwHttpError(res, 'crawl/start');
@@ -48,4 +48,20 @@ export async function stopCrawl() {
   if (!res.ok && res.status !== 204) {
     await throwHttpError(res, 'crawl/stop');
   }
+}
+
+export async function fetchCrawlHistory() {
+  const res = await fetch(`${getApiBase()}/api/crawl/history`);
+  if (!res.ok) {
+    await throwHttpError(res, 'crawl/history');
+  }
+  return parseJsonResponse(res);
+}
+
+export async function fetchHistoryResults(id) {
+  const res = await fetch(`${getApiBase()}/api/crawl/history/${encodeURIComponent(id)}/results`);
+  if (!res.ok) {
+    await throwHttpError(res, 'crawl/history/results');
+  }
+  return parseJsonResponse(res);
 }

@@ -168,7 +168,7 @@ export class CrawlerEngine {
     this.errors = this.nodes.filter((node) => node.failed).length;
   }
 
-  async start(seedUrl, depth, method) {
+  async start(seedUrl, depth, method, respectRobots = false) {
     this._clearPoll();
 
     this.running = true;
@@ -181,6 +181,7 @@ export class CrawlerEngine {
     this.maxDepth = Number.isFinite(depth) ? Math.min(10, Math.max(1, depth)) : 3;
     this.seedUrl = normalizeUrl(seedUrl) || seedUrl;
     this.method = method;
+    this.respectRobots = Boolean(respectRobots);
     this.queueSize = 0;
     this._seenNodeUrls = new Set();
     this._lastCurrentUrl = '';
@@ -196,6 +197,7 @@ export class CrawlerEngine {
         seedUrl: this.seedUrl,
         depth: this.maxDepth,
         traversal,
+        respectRobots: this.respectRobots,
       });
 
       this._emit('start', { seedUrl: this.seedUrl, depth: this.maxDepth, method });

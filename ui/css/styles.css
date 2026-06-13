@@ -586,7 +586,13 @@ body {
   min-height: 0;
 }
 
-.view--active:not(#view-dashboard):not(#view-link-graph):not(#view-jobs):not(#view-settings) {
+#view-results.view--active,
+#view-history.view--active {
+  display: block;
+  overflow: auto;
+}
+
+.view--active:not(#view-dashboard):not(#view-link-graph):not(#view-jobs):not(#view-settings):not(#view-results):not(#view-history) {
   display: block;
   overflow: auto;
 }
@@ -1497,6 +1503,67 @@ select.field__input {
 .graph-filter:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+}
+
+.graph-export-wrap {
+  position: relative;
+}
+
+.graph-export-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  min-width: 120px;
+  background: #111111;
+  border: 1px solid #1F1F1F;
+  border-radius: 0;
+  z-index: 20;
+}
+
+.graph-export-menu__item {
+  display: block;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  border-radius: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.graph-export-menu__item:hover {
+  color: var(--text-body);
+  background: #0D0D0D;
+}
+
+.results-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.results-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 20px 12px;
+}
+
+.results-list {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.history-table__url {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* New Crawl Job */

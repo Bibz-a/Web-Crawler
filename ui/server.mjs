@@ -10,6 +10,7 @@ const DATA_DIR = path.join(REPO_ROOT, 'data');
 const CRAWL_STATUS_PATH = path.join(DATA_DIR, 'crawl-status.json');
 const CRAWL_RESULTS_PATH = path.join(DATA_DIR, 'crawl-results.json');
 const CRAWL_STOP_PATH = path.join(DATA_DIR, 'crawl-stop');
+const HISTORY_DIR = path.join(DATA_DIR, 'history');
 const CRAWLER_CLI = path.join(
   REPO_ROOT,
   process.platform === 'win32' ? 'webcrawler_cli.exe' : 'webcrawler_cli'
@@ -21,7 +22,7 @@ const ALLOWED_ORIGIN =
   'http://localhost:8080';
 
 const CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self';";
+  "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self';";
 
 const MIME = {
   '.html': 'text/html',
@@ -63,7 +64,7 @@ function validateCrawlStartBody(body) {
     return { ok: false, error: 'body must be a JSON object' };
   }
 
-  const { seedUrl, depth, traversal } = body;
+  const { seedUrl, depth, traversal, respectRobots } = body;
   if (!isValidHttpUrl(seedUrl)) {
     return { ok: false, error: 'seedUrl must be a valid http(s) URL' };
   }
@@ -82,6 +83,7 @@ function validateCrawlStartBody(body) {
       seedUrl: seedUrl.trim(),
       depth,
       traversal: normalizedTraversal,
+      respectRobots: Boolean(respectRobots),
     },
   };
 }
@@ -98,7 +100,7 @@ function getCrawlStatusSnapshot() {
   });
 }
 
-function startCrawlJob({ seedUrl, depth, traversal }) {
+function startCrawlJob({ seedUrl, depth, traversal, respectRobots }) {
   if (crawlProcess) {
     return { ok: false, error: 'crawl already running' };
   }
@@ -128,20 +130,23 @@ function startCrawlJob({ seedUrl, depth, traversal }) {
   fs.writeFileSync(CRAWL_STATUS_PATH, JSON.stringify(initialStatus, null, 2));
   fs.writeFileSync(CRAWL_RESULTS_PATH, JSON.stringify({ nodes: [], edges: [] }, null, 2));
 
-  crawlProcess = spawn(
-    CRAWLER_CLI,
-    [
-      '--url', seedUrl,
-      '--depth', String(depth),
-      '--traversal', traversal,
-      '--status', CRAWL_STATUS_PATH,
-      '--results', CRAWL_RESULTS_PATH,
-      '--stop', CRAWL_STOP_PATH,
-    ],
-    { cwd: REPO_ROOT, stdio: 'ignore' }
-  );
+  const spawnArgs = [
+    '--url', seedUrl,
+    '--depth', String(depth),
+    '--traversal', traversal,
+    '--status', CRAWL_STATUS_PATH,
+    '--results', CRAWL_RESULTS_PATH,
+    '--stop', CRAWL_STOP_PATH,
+  ];
+  if (respectRobots) spawnArgs.push('--robots');
+
+  crawlProcess = spawn(CRAWLER_CLI, spawnArgs, { cwd: REPO_ROOT, stdio: 'ignore' });
 
   crawlProcess.on('exit', () => {
+    const snapshot = getCrawlStatusSnapshot();
+    if (snapshot.status === 'complete') {
+      archiveCrawlRun();
+    }
     crawlProcess = null;
   });
 
@@ -164,6 +169,50 @@ function stopCrawlJob() {
   }
 
   return { ok: true };
+}
+
+function archiveTimestamp() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function archiveCrawlRun() {
+  if (!fs.existsSync(CRAWL_STATUS_PATH) || !fs.existsSync(CRAWL_RESULTS_PATH)) return;
+
+  fs.mkdirSync(HISTORY_DIR, { recursive: true });
+  const stamp = archiveTimestamp();
+  fs.copyFileSync(CRAWL_STATUS_PATH, path.join(HISTORY_DIR, `${stamp}-status.json`));
+  fs.copyFileSync(CRAWL_RESULTS_PATH, path.join(HISTORY_DIR, `${stamp}-results.json`));
+}
+
+function listCrawlHistory() {
+  if (!fs.existsSync(HISTORY_DIR)) return [];
+
+  return fs.readdirSync(HISTORY_DIR)
+    .filter((name) => name.endsWith('-status.json'))
+    .map((name) => {
+      const id = name.replace(/-status\.json$/, '');
+      const snapshot = readJsonFile(path.join(HISTORY_DIR, name), null);
+      if (!snapshot) return null;
+      return {
+        id,
+        timestamp: id,
+        seedUrl: snapshot.seedUrl || '',
+        pagesCrawled: snapshot.pagesCrawled ?? 0,
+        errors: snapshot.errors ?? 0,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.id.localeCompare(a.id));
+}
+
+function getHistoryResults(id) {
+  const safeId = path.basename(id);
+  const resultsPath = path.resolve(HISTORY_DIR, `${safeId}-results.json`);
+  const historyResolved = path.resolve(HISTORY_DIR);
+  if (!resultsPath.startsWith(historyResolved) || !fs.existsSync(resultsPath)) {
+    return null;
+  }
+  return readJsonFile(resultsPath, { nodes: [], edges: [] });
 }
 
 function clientIp(req) {
@@ -319,6 +368,22 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/crawl/results' && req.method === 'GET') {
     const results = readJsonFile(CRAWL_RESULTS_PATH, { nodes: [], edges: [] });
+    sendJson(req, res, 200, results);
+    return;
+  }
+
+  if (url.pathname === '/api/crawl/history' && req.method === 'GET') {
+    sendJson(req, res, 200, listCrawlHistory());
+    return;
+  }
+
+  const historyMatch = url.pathname.match(/^\/api\/crawl\/history\/([^/]+)\/results$/);
+  if (historyMatch && req.method === 'GET') {
+    const results = getHistoryResults(decodeURIComponent(historyMatch[1]));
+    if (!results) {
+      sendJson(req, res, 404, { error: 'history entry not found' });
+      return;
+    }
     sendJson(req, res, 200, results);
     return;
   }
