@@ -18,13 +18,28 @@ SRC := \
 	src/stack.cpp
 
 TARGET := webcrawler
+CLI_TARGET := webcrawler_cli
 
-.PHONY: all clean
+CRAWL_SRC := \
+	src/crawl_runner.cpp \
+	src/parser.cpp \
+	src/Graph.cpp \
+	src/filehandler.cpp \
+	src/hashmaps.cpp \
+	src/queue.cpp \
+	src/stack.cpp
+
+.PHONY: all clean cli
 
 all: $(TARGET)
+
+cli: $(CLI_TARGET)
 
 $(TARGET): $(SRC)
 	$(CXX) $(CXXFLAGS) -o $@ $(SRC) $(LDFLAGS)
 
+$(CLI_TARGET): src/crawl_cli.cpp $(CRAWL_SRC)
+	$(CXX) $(CXXFLAGS) -o $@ src/crawl_cli.cpp $(CRAWL_SRC) $(LDFLAGS)
+
 clean:
-	rm -f $(TARGET) $(TARGET).exe
+	rm -f $(TARGET) $(TARGET).exe $(CLI_TARGET) $(CLI_TARGET).exe

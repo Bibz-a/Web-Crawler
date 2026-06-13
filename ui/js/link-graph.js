@@ -8,59 +8,6 @@ function getOrigin(url) {
   }
 }
 
-function buildDemoGraph() {
-  const seed = 'https://example.com';
-  const origin = getOrigin(seed);
-  const nodes = [];
-  const links = [];
-  const paths = [
-    '/', '/about', '/docs', '/blog', '/api', '/contact',
-    '/docs/guide', '/docs/api', '/blog/post-1', '/blog/post-2',
-    '/team', '/careers', '/legal', '/status',
-  ];
-
-  nodes.push({
-    id: seed,
-    url: seed,
-    depth: 0,
-    failed: false,
-    isSeed: true,
-    external: false,
-    statusCode: 200,
-    crawlTime: '124ms',
-  });
-
-  for (let i = 1; i < 48; i++) {
-    const external = i % 23 === 0;
-    const path = paths[i % paths.length] + (i > paths.length ? `/${i}` : '');
-    const url = external
-      ? `https://cdn-${i}.external.net/ref/${i}`
-      : `${origin}${path}`;
-    const depth = 1 + (i % 4);
-    const failed = i % 17 === 0;
-    nodes.push({
-      id: url,
-      url,
-      depth,
-      failed,
-      isSeed: false,
-      external,
-      statusCode: failed ? 404 : 200,
-      crawlTime: `${80 + (i * 13) % 200}ms`,
-    });
-    const parent = i % 5 === 0 ? seed : nodes[Math.max(1, 1 + (i % (nodes.length - 1)))].id;
-    links.push({ source: parent, target: url });
-  }
-
-  for (let i = 0; i < 30; i++) {
-    const a = nodes[1 + (i * 3) % (nodes.length - 1)];
-    const b = nodes[1 + (i * 7 + 2) % (nodes.length - 1)];
-    if (a.id !== b.id) links.push({ source: a.id, target: b.id });
-  }
-
-  return { nodes, links, seedOrigin: origin, placeholder: true };
-}
-
 export class LinkGraph {
   constructor(container, tooltipEl, metaEl) {
     this.container = container;
@@ -74,15 +21,17 @@ export class LinkGraph {
     this.allNodes = [];
     this.allLinks = [];
     this.seedOrigin = null;
-    this.usePlaceholder = true;
     this.width = 0;
     this.height = 0;
     this.breatheTimer = null;
+    this.spread = false;
+    this._forceDefaults = { linkDistance: 52, chargeStrength: -28 };
+    this._forceSpread = { linkDistance: 120, chargeStrength: -400 };
 
     this._initSvg();
     this._bindFilters();
     this._bindResize();
-    this.loadDemo();
+    this._updateMeta(0, 0);
     this._startBreathing();
   }
 
@@ -108,6 +57,12 @@ export class LinkGraph {
     document.querySelectorAll('.graph-filter').forEach((btn) => {
       btn.addEventListener('click', () => {
         const key = btn.dataset.filter;
+        if (key === 'spread') {
+          this.spread = !this.spread;
+          btn.classList.toggle('graph-filter--active', this.spread);
+          this._applyForceSettings();
+          return;
+        }
         if (key === 'depth2') {
           this._toggleDepthFilter(btn, 2);
         } else if (key === 'depth3') {
@@ -138,6 +93,18 @@ export class LinkGraph {
     }
   }
 
+  _forceSettings() {
+    return this.spread ? this._forceSpread : this._forceDefaults;
+  }
+
+  _applyForceSettings() {
+    if (!this.simulation) return;
+    const { linkDistance, chargeStrength } = this._forceSettings();
+    this.simulation.force('link').distance(linkDistance);
+    this.simulation.force('charge').strength(chargeStrength);
+    this.simulation.alpha(0.5).restart();
+  }
+
   _bindResize() {
     this._resize();
     this._ro = new ResizeObserver(() => this._resize());
@@ -158,20 +125,9 @@ export class LinkGraph {
     }
   }
 
-  loadDemo() {
-    const demo = buildDemoGraph();
-    this.allNodes = demo.nodes;
-    this.allLinks = demo.links;
-    this.seedOrigin = demo.seedOrigin;
-    this.usePlaceholder = true;
-    this._updateMeta(2847, 14302);
-    this._renderFiltered();
-  }
-
   syncFromEngine(engine, responseMs) {
     if (!engine.nodes.length) return;
 
-    this.usePlaceholder = false;
     this.seedOrigin = getOrigin(engine.seedUrl);
 
     this.allNodes = engine.nodes.map((n) => ({
@@ -234,8 +190,13 @@ export class LinkGraph {
   _renderFiltered() {
     const { nodes, links } = this._getFiltered();
 
-    if (!this.usePlaceholder) {
-      this._updateMeta(nodes.length, links.length);
+    this._updateMeta(nodes.length, links.length);
+
+    if (nodes.length === 0) {
+      if (this.simulation) this.simulation.stop();
+      this.linkLayer.selectAll('*').remove();
+      this.nodeLayer.selectAll('*').remove();
+      return;
     }
 
     if (this.simulation) this.simulation.stop();
@@ -280,9 +241,11 @@ export class LinkGraph {
       .on('mousemove', (event) => this._moveTooltip(event))
       .on('mouseleave', () => this._hideTooltip());
 
+    const { linkDistance, chargeStrength } = this._forceSettings();
+
     this.simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id((d) => d.id).distance(52).strength(0.5))
-      .force('charge', d3.forceManyBody().strength(-28))
+      .force('link', d3.forceLink(links).id((d) => d.id).distance(linkDistance).strength(0.5))
+      .force('charge', d3.forceManyBody().strength(chargeStrength))
       .force('center', d3.forceCenter(this.width / 2, this.height / 2))
       .force('collide', d3.forceCollide().radius((d) => (d.isSeed ? 16 : 10)))
       .velocityDecay(0.55)
@@ -361,13 +324,6 @@ export class LinkGraph {
     if (this.tooltipEl) this.tooltipEl.hidden = true;
   }
 
-  _esc(str) {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-  }
-
   _startBreathing() {
     this.breatheTimer = setInterval(() => {
       if (!this.simulation) return;
@@ -381,17 +337,12 @@ export class LinkGraph {
   }
 
   clearForCrawl(seedUrl) {
-    this.usePlaceholder = false;
     this.allNodes = [];
     this.allLinks = [];
     this.seedOrigin = getOrigin(seedUrl);
     this._updateMeta(0, 0);
     this.nodeLayer.selectAll('g').remove();
     this.linkLayer.selectAll('line').remove();
-  }
-
-  reset() {
-    this.loadDemo();
   }
 
   resize() {

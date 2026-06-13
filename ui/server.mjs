@@ -2,8 +2,18 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.join(__dirname, '..');
+const DATA_DIR = path.join(REPO_ROOT, 'data');
+const CRAWL_STATUS_PATH = path.join(DATA_DIR, 'crawl-status.json');
+const CRAWL_RESULTS_PATH = path.join(DATA_DIR, 'crawl-results.json');
+const CRAWL_STOP_PATH = path.join(DATA_DIR, 'crawl-stop');
+const CRAWLER_CLI = path.join(
+  REPO_ROOT,
+  process.platform === 'win32' ? 'webcrawler_cli.exe' : 'webcrawler_cli'
+);
 const PORT = Number(process.env.PORT) || 8080;
 const ALLOWED_ORIGIN =
   process.env.ALLOWED_ORIGIN ||
@@ -27,14 +37,134 @@ const RATE_LIMIT_MAX = 60;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const rateLimitMap = new Map();
 
-let crawlState = {
-  status: 'idle',
-  depth: 0,
-  threads: 0,
-  queue: 0,
-  traversal: 'BFS',
-  threadsTotal: 16,
-};
+let crawlProcess = null;
+
+function readJsonFile(filePath, fallback = null) {
+  try {
+    if (!fs.existsSync(filePath)) return fallback;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
+function isValidHttpUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function validateCrawlStartBody(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { ok: false, error: 'body must be a JSON object' };
+  }
+
+  const { seedUrl, depth, traversal } = body;
+  if (!isValidHttpUrl(seedUrl)) {
+    return { ok: false, error: 'seedUrl must be a valid http(s) URL' };
+  }
+  if (!isPositiveInt(depth) || depth > 10) {
+    return { ok: false, error: 'depth must be a positive integer up to 10' };
+  }
+
+  const normalizedTraversal = String(traversal || 'BFS').toUpperCase();
+  if (normalizedTraversal !== 'BFS' && normalizedTraversal !== 'DFS') {
+    return { ok: false, error: 'traversal must be "BFS" or "DFS"' };
+  }
+
+  return {
+    ok: true,
+    value: {
+      seedUrl: seedUrl.trim(),
+      depth,
+      traversal: normalizedTraversal,
+    },
+  };
+}
+
+function getCrawlStatusSnapshot() {
+  return readJsonFile(CRAWL_STATUS_PATH, {
+    status: 'idle',
+    pagesCrawled: 0,
+    queueSize: 0,
+    currentUrl: '',
+    errors: 0,
+    elapsedMs: 0,
+    nodes: [],
+  });
+}
+
+function startCrawlJob({ seedUrl, depth, traversal }) {
+  if (crawlProcess) {
+    return { ok: false, error: 'crawl already running' };
+  }
+
+  if (!fs.existsSync(CRAWLER_CLI)) {
+    return {
+      ok: false,
+      error: 'webcrawler_cli not found — run `make cli` from the repo root',
+    };
+  }
+
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (fs.existsSync(CRAWL_STOP_PATH)) fs.unlinkSync(CRAWL_STOP_PATH);
+
+  const initialStatus = {
+    status: 'running',
+    pagesCrawled: 0,
+    queueSize: 1,
+    currentUrl: seedUrl,
+    errors: 0,
+    elapsedMs: 0,
+    seedUrl,
+    depth,
+    traversal,
+    nodes: [],
+  };
+  fs.writeFileSync(CRAWL_STATUS_PATH, JSON.stringify(initialStatus, null, 2));
+  fs.writeFileSync(CRAWL_RESULTS_PATH, JSON.stringify({ nodes: [], edges: [] }, null, 2));
+
+  crawlProcess = spawn(
+    CRAWLER_CLI,
+    [
+      '--url', seedUrl,
+      '--depth', String(depth),
+      '--traversal', traversal,
+      '--status', CRAWL_STATUS_PATH,
+      '--results', CRAWL_RESULTS_PATH,
+      '--stop', CRAWL_STOP_PATH,
+    ],
+    { cwd: REPO_ROOT, stdio: 'ignore' }
+  );
+
+  crawlProcess.on('exit', () => {
+    crawlProcess = null;
+  });
+
+  return { ok: true };
+}
+
+function stopCrawlJob() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(CRAWL_STOP_PATH, 'stop');
+
+  if (crawlProcess) {
+    crawlProcess.kill();
+    crawlProcess = null;
+  }
+
+  const snapshot = getCrawlStatusSnapshot();
+  if (snapshot.status === 'running') {
+    snapshot.status = 'stopped';
+    fs.writeFileSync(CRAWL_STATUS_PATH, JSON.stringify(snapshot, null, 2));
+  }
+
+  return { ok: true };
+}
 
 function clientIp(req) {
   return req.socket.remoteAddress || 'unknown';
@@ -122,52 +252,6 @@ function isPositiveInt(value) {
   return Number.isInteger(value) && value > 0;
 }
 
-function isNonNegativeInt(value) {
-  return Number.isInteger(value) && value >= 0;
-}
-
-function validateStateBody(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return { ok: false, error: 'body must be a JSON object' };
-  }
-
-  const allowed = new Set(['status', 'depth', 'threads', 'queue', 'traversal']);
-  for (const key of Object.keys(body)) {
-    if (!allowed.has(key)) {
-      return { ok: false, error: `unknown field: ${key}` };
-    }
-  }
-
-  const { status, depth, threads, queue, traversal } = body;
-
-  if (status !== undefined && typeof status !== 'string') {
-    return { ok: false, error: 'status must be a string' };
-  }
-  if (depth !== undefined && !isPositiveInt(depth)) {
-    return { ok: false, error: 'depth must be a positive integer' };
-  }
-  if (threads !== undefined && !isNonNegativeInt(threads)) {
-    return { ok: false, error: 'threads must be a non-negative integer' };
-  }
-  if (queue !== undefined && !isNonNegativeInt(queue)) {
-    return { ok: false, error: 'queue must be a non-negative integer' };
-  }
-  if (traversal !== undefined && traversal !== 'BFS' && traversal !== 'DFS') {
-    return { ok: false, error: 'traversal must be "BFS" or "DFS"' };
-  }
-
-  return {
-    ok: true,
-    value: {
-      ...(status !== undefined ? { status } : {}),
-      ...(depth !== undefined ? { depth } : {}),
-      ...(threads !== undefined ? { threads } : {}),
-      ...(queue !== undefined ? { queue } : {}),
-      ...(traversal !== undefined ? { traversal } : {}),
-    },
-  };
-}
-
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const origin = requestOrigin(req);
@@ -195,52 +279,54 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (isApi) {
-    if (!checkRateLimit(clientIp(req))) {
-      sendRateLimited(req, res);
-      return;
-    }
-  }
+  const isRateLimitedWrite =
+    (url.pathname === '/api/crawl/start' && req.method === 'POST') ||
+    (url.pathname === '/api/crawl/stop' && req.method === 'POST');
 
-  if (url.pathname === '/api/job/current' && req.method === 'GET') {
-    sendJson(req, res, 200, {
-      threadsActive: crawlState.threads,
-      threadsTotal: crawlState.threadsTotal,
-    });
+  if (isRateLimitedWrite && !checkRateLimit(clientIp(req))) {
+    sendRateLimited(req, res);
     return;
   }
 
-  if (url.pathname === '/api/queue/count' && req.method === 'GET') {
-    sendJson(req, res, 200, { pending: crawlState.queue });
-    return;
-  }
-
-  if (url.pathname === '/api/stats' && req.method === 'GET') {
-    const mem = process.memoryUsage();
-    sendJson(req, res, 200, {
-      usedJSHeapSize: mem.heapUsed,
-      jsHeapSizeLimit: mem.heapTotal + mem.heapUsed,
-    });
-    return;
-  }
-
-  if (url.pathname === '/api/internal/state' && req.method === 'POST') {
+  if (url.pathname === '/api/crawl/start' && req.method === 'POST') {
     try {
       const raw = await readBody(req);
       const body = raw ? JSON.parse(raw) : {};
-      const result = validateStateBody(body);
+      const result = validateCrawlStartBody(body);
 
       if (!result.ok) {
         sendJson(req, res, 400, { error: result.error });
         return;
       }
 
-      crawlState = { ...crawlState, ...result.value };
-      res.writeHead(204, apiHeaders(req));
-      res.end();
+      const started = startCrawlJob(result.value);
+      if (!started.ok) {
+        sendJson(req, res, 409, { error: started.error });
+        return;
+      }
+
+      sendJson(req, res, 202, { status: 'running' });
     } catch {
       sendJson(req, res, 400, { error: 'invalid JSON body' });
     }
+    return;
+  }
+
+  if (url.pathname === '/api/crawl/status' && req.method === 'GET') {
+    sendJson(req, res, 200, getCrawlStatusSnapshot());
+    return;
+  }
+
+  if (url.pathname === '/api/crawl/results' && req.method === 'GET') {
+    const results = readJsonFile(CRAWL_RESULTS_PATH, { nodes: [], edges: [] });
+    sendJson(req, res, 200, results);
+    return;
+  }
+
+  if (url.pathname === '/api/crawl/stop' && req.method === 'POST') {
+    stopCrawlJob();
+    res.writeHead(204, apiHeaders(req));
+    res.end();
     return;
   }
 

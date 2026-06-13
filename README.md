@@ -6,9 +6,12 @@ CS-221 DSA project — a web crawler with custom queue, stack, hash map, and gra
 
 ## Run the web UI
 
-**Requirements:** [Node.js](https://nodejs.org/) 18+
+**Requirements:** [Node.js](https://nodejs.org/) 18+, C++ toolchain with **libcurl**
 
 ```bash
+# From repo root — build the crawl worker once
+make cli
+
 cd ui
 npm install
 node server.mjs

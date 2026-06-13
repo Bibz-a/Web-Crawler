@@ -1,30 +1,12 @@
-/**
- * Crawl engine — simulates BFS/DFS crawl for the UI.
- * Replace fetch calls with a real backend API when available.
- */
+import { startCrawl, fetchCrawlStatus, fetchCrawlResults, stopCrawl } from './api.js';
 
-const DEMO_SITES = {
-  'https://example.com': {
-    pages: [
-      { path: '/', links: ['/about', '/docs', '/blog'] },
-      { path: '/about', links: ['/team', '/contact'] },
-      { path: '/docs', links: ['/docs/api', '/docs/guide', '/about'] },
-      { path: '/docs/api', links: ['/docs'] },
-      { path: '/docs/guide', links: ['/docs', '/blog'] },
-      { path: '/blog', links: ['/blog/post-1', '/blog/post-2', '/about'] },
-      { path: '/blog/post-1', links: ['/blog'] },
-      { path: '/blog/post-2', links: ['/blog', '/docs'] },
-      { path: '/team', links: ['/about'] },
-      { path: '/contact', links: ['/about'] },
-    ],
-  },
-};
+const POLL_MS = 2000;
+const SPEED_WINDOW_MS = 10000;
 
 function normalizeUrl(input) {
   let raw = input.trim();
   if (!raw) return null;
 
-  // Accept bare domains like "example.com"
   if (!/^https?:\/\//i.test(raw)) {
     raw = `https://${raw}`;
   }
@@ -42,51 +24,6 @@ function normalizeUrl(input) {
   }
 }
 
-function resolveLink(base, href) {
-  try {
-    const resolved = new URL(href, base);
-    if (!['http:', 'https:'].includes(resolved.protocol)) return null;
-    resolved.hash = '';
-    if (resolved.pathname === '/' || resolved.pathname === '') {
-      return resolved.origin;
-    }
-    return resolved.href.replace(/\/$/, '');
-  } catch {
-    return null;
-  }
-}
-
-function getOrigin(url) {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return url;
-  }
-}
-
-function buildDemoGraph(seedUrl) {
-  const origin = getOrigin(seedUrl);
-  const seed = normalizeUrl(seedUrl) || seedUrl;
-  const template = DEMO_SITES['https://example.com'].pages;
-
-  const graph = new Map();
-  for (const page of template) {
-    const full = resolveLink(origin + '/', page.path.startsWith('/') ? page.path : '/' + page.path);
-    const links = page.links
-      .map(l => resolveLink(full, l))
-      .filter(Boolean);
-    graph.set(full, links);
-  }
-
-  if (!graph.has(seed)) {
-    graph.set(seed, template[0]?.links
-      .map(l => resolveLink(seed, l))
-      .filter(Boolean) || []);
-  }
-
-  return graph;
-}
-
 function shortUrl(url) {
   try {
     const u = new URL(url);
@@ -94,6 +31,17 @@ function shortUrl(url) {
   } catch {
     return url;
   }
+}
+
+function mapApiNode(node) {
+  return {
+    id: node.url,
+    url: node.url,
+    depth: node.depth ?? 0,
+    parentId: node.parentUrl || null,
+    failed: Boolean(node.failed),
+    status: node.failed ? 'fail' : 'ok',
+  };
 }
 
 export class CrawlerEngine {
@@ -110,11 +58,29 @@ export class CrawlerEngine {
     this.maxDepth = 3;
     this.seedUrl = '';
     this.method = 'bfs';
-    this.parentMap = new Map();
-    this.depthMap = new Map();
-    this._timer = null;
-    this._pageGraph = null;
-    this._frontier = [];
+    this._pollTimer = null;
+    this._seenNodeUrls = new Set();
+    this._lastCurrentUrl = '';
+    this._finished = false;
+    this._pageTimestamps = [];
+    this._lastNodeAt = null;
+  }
+
+  getCrawlStats() {
+    const now = Date.now();
+    this._pageTimestamps = this._pageTimestamps.filter((t) => now - t <= SPEED_WINDOW_MS);
+    const speedPerSec = this.running && this._pageTimestamps.length > 0
+      ? this._pageTimestamps.length / (SPEED_WINDOW_MS / 1000)
+      : 0;
+
+    return {
+      running: this.running,
+      queueSize: this.running ? this.queueSize : 0,
+      speedPerSec,
+      pagesCrawled: this.nodes.length,
+      errors: this.errors,
+      elapsedMs: this.startTime ? now - this.startTime : 0,
+    };
   }
 
   on(event, fn) {
@@ -135,11 +101,75 @@ export class CrawlerEngine {
     this._emit('log', entry);
   }
 
-  async start(seedUrl, depth, method) {
-    if (this._timer) {
-      clearTimeout(this._timer);
-      this._timer = null;
+  _clearPoll() {
+    if (this._pollTimer) {
+      clearInterval(this._pollTimer);
+      this._pollTimer = null;
     }
+  }
+
+  _recordPage() {
+    const now = Date.now();
+    this._pageTimestamps.push(now);
+    if (this._lastNodeAt) {
+      this._lastResponseMs = now - this._lastNodeAt;
+    }
+    this._lastNodeAt = now;
+  }
+
+  getLastResponseMs() {
+    return this._lastResponseMs ?? null;
+  }
+
+  _applyStatus(status) {
+    this.queueSize = status.queueSize ?? 0;
+    this.errors = status.errors ?? 0;
+    this._emit('queue', this.queueSize);
+
+    const apiNodes = Array.isArray(status.nodes) ? status.nodes : [];
+    for (const apiNode of apiNodes) {
+      if (!apiNode?.url || this._seenNodeUrls.has(apiNode.url)) continue;
+
+      this._seenNodeUrls.add(apiNode.url);
+      const node = mapApiNode(apiNode);
+      this.nodes.push(node);
+      this._recordPage();
+      this._emit('node', node);
+      this._log(
+        node.failed
+          ? `FAIL ${shortUrl(node.url)} — fetch failed`
+          : `FETCH d=${node.depth} ${shortUrl(node.url)}`,
+        node.failed ? 'error' : 'fetch'
+      );
+    }
+
+    const currentUrl = status.currentUrl || '';
+    if (currentUrl && currentUrl !== this._lastCurrentUrl && status.status === 'running') {
+      this._lastCurrentUrl = currentUrl;
+      if (!this._seenNodeUrls.has(currentUrl)) {
+        this._log(`QUEUE → ${shortUrl(currentUrl)}`, 'link');
+      }
+    }
+
+    this._emitStats(status);
+  }
+
+  async _loadResults() {
+    const results = await fetchCrawlResults();
+    const apiNodes = Array.isArray(results.nodes) ? results.nodes : [];
+    const apiEdges = Array.isArray(results.edges) ? results.edges : [];
+
+    this.nodes = apiNodes.map(mapApiNode);
+    this.edges = apiEdges.map((edge) => ({
+      from: edge.from,
+      to: edge.to,
+    }));
+    this._seenNodeUrls = new Set(this.nodes.map((node) => node.url));
+    this.errors = this.nodes.filter((node) => node.failed).length;
+  }
+
+  async start(seedUrl, depth, method) {
+    this._clearPoll();
 
     this.running = true;
     this.aborted = false;
@@ -151,168 +181,108 @@ export class CrawlerEngine {
     this.maxDepth = Number.isFinite(depth) ? Math.min(10, Math.max(1, depth)) : 3;
     this.seedUrl = normalizeUrl(seedUrl) || seedUrl;
     this.method = method;
-    this.parentMap.clear();
-    this.depthMap.clear();
-    this._pageGraph = buildDemoGraph(this.seedUrl);
-    this._totalPages = this._countReachablePages();
+    this.queueSize = 0;
+    this._seenNodeUrls = new Set();
+    this._lastCurrentUrl = '';
+    this._finished = false;
+    this._pageTimestamps = [];
+    this._lastNodeAt = null;
+    this._lastResponseMs = null;
 
-    const seed = this.seedUrl;
-    this.parentMap.set(seed, null);
-    this.depthMap.set(seed, 0);
-    this._frontier = [{ url: seed, depth: 0 }];
-
-    this.queueSize = this._frontier.length;
-    this._emit('start', { seedUrl: seed, depth: this.maxDepth, method });
-    this._log(`INIT ${method.toUpperCase()} crawl → ${shortUrl(seed)}`, 'fetch');
-    this._emitStats();
-
-    await this._step();
-  }
-
-  _countReachablePages() {
-    const visited = new Set();
-    const queue = [{ url: this.seedUrl, depth: 0 }];
-
-    while (queue.length > 0) {
-      const { url, depth } = queue.shift();
-      if (visited.has(url) || depth > this.maxDepth) continue;
-      visited.add(url);
-      for (const link of this._pageGraph.get(url) || []) {
-        if (!visited.has(link)) {
-          queue.push({ url: link, depth: depth + 1 });
-        }
-      }
-    }
-
-    return Math.max(visited.size, 1);
-  }
-
-  stop() {
-    this.aborted = true;
-    this.running = false;
-    if (this._timer) clearTimeout(this._timer);
-    this._emit('stop', {});
-    this._log('Crawl aborted by user', 'error');
-  }
-
-  async _step() {
-    if (this.aborted) {
-      this._finish();
-      return;
-    }
-
-    if (this._frontier.length === 0) {
-      this._finish();
-      return;
-    }
+    const traversal = method === 'dfs' ? 'DFS' : 'BFS';
 
     try {
-      let current;
-      if (this.method === 'bfs') {
-        current = this._frontier.shift();
-      } else {
-        current = this._frontier.pop();
-      }
+      await startCrawl({
+        seedUrl: this.seedUrl,
+        depth: this.maxDepth,
+        traversal,
+      });
 
-      const { url, depth } = current;
-      this.queueSize = this._frontier.length;
-      this._emit('queue', this.queueSize);
+      this._emit('start', { seedUrl: this.seedUrl, depth: this.maxDepth, method });
+      this._log(`INIT ${traversal} crawl → ${shortUrl(this.seedUrl)}`, 'fetch');
+      this._emitStats({ status: 'running', pagesCrawled: 0, queueSize: 1, elapsedMs: 0 });
 
-      if (depth > this.maxDepth) {
-        this._timer = setTimeout(() => this._step(), 30);
-        return;
-      }
+      this._pollTimer = setInterval(() => {
+        this._poll().catch((err) => {
+          this._log(
+            `ERROR ${err.message} | status=${err.status ?? '—'} ` +
+            `statusText=${err.statusText ?? '—'} | body=${err.responseBody ?? '—'}`,
+            'error'
+          );
+        });
+      }, POLL_MS);
 
-      const visited = this.nodes.some(n => n.url === url);
-      if (visited) {
-        this._timer = setTimeout(() => this._step(), 30);
-        return;
-      }
-
-      const parentId = this.parentMap.get(url);
-      const failed = !this._pageGraph.has(url) && url !== this.seedUrl;
-      if (failed) this.errors++;
-
-      const node = {
-        id: url,
-        url,
-        depth,
-        parentId: parentId ?? null,
-        failed,
-        status: failed ? 'fail' : 'ok',
-      };
-
-      this.nodes.push(node);
-      if (parentId) {
-        this.edges.push({ from: parentId, to: url });
-      }
-
-      this._emit('node', node);
-      this._log(
-        failed
-          ? `FAIL ${shortUrl(url)} — unreachable`
-          : `FETCH d=${depth} ${shortUrl(url)}`,
-        failed ? 'error' : 'fetch'
-      );
-
-      if (!failed) {
-        const links = this._pageGraph.get(url) || [];
-        const newLinks = [];
-
-        for (const link of links) {
-          if (!this.nodes.some(n => n.url === link) && !this._frontier.some(f => f.url === link)) {
-            if ((this.depthMap.get(link) ?? depth + 1) <= this.maxDepth) {
-              this.parentMap.set(link, url);
-              this.depthMap.set(link, depth + 1);
-              newLinks.push(link);
-            }
-          }
-        }
-
-        if (this.method === 'dfs') {
-          newLinks.reverse();
-        }
-
-        for (const link of newLinks) {
-          this._frontier.push({ url: link, depth: depth + 1 });
-          this._emit('discover', { url: link, depth: depth + 1, parent: url });
-          this._log(`LINK + ${shortUrl(link)}`, 'link');
-        }
-
-        this.queueSize = this._frontier.length;
-        this._emit('queue', this.queueSize);
-      }
-
-      this._emitStats();
+      await this._poll();
     } catch (err) {
-      console.error('Crawl step failed:', err);
+      this.running = false;
       this._log(`ERROR ${err.message}`, 'error');
-      this._emitStats();
+      this._emit('stop', {});
+      throw err;
     }
-
-    const delay = 180 + Math.random() * 220;
-    this._timer = setTimeout(() => this._step(), delay);
   }
 
-  _emitStats() {
-    const elapsed = Date.now() - this.startTime;
-    const rate = this.nodes.length / (elapsed / 1000 || 1);
-    const progress = this.running
-      ? Math.min(99, Math.round((this.nodes.length / this._totalPages) * 100) || (this.nodes.length > 0 ? 1 : 0))
-      : 100;
+  async _poll() {
+    if (!this.running || this.aborted) return;
+
+    const status = await fetchCrawlStatus();
+    if (!this.running || this.aborted) return;
+
+    this._applyStatus(status);
+
+    if (status.status === 'complete') {
+      await this._loadResults();
+      this._finish('complete');
+      return;
+    }
+
+    if (status.status === 'stopped' || status.status === 'error') {
+      await this._loadResults().catch(() => {});
+      this._finish(status.status === 'stopped' ? 'stop' : 'error');
+    }
+  }
+
+  async stop() {
+    if (!this.running) return;
+
+    this.aborted = true;
+    this.running = false;
+    this._clearPoll();
+
+    try {
+      await stopCrawl();
+      await this._loadResults().catch(() => {});
+    } catch (err) {
+      this._log(`ERROR ${err.message}`, 'error');
+    }
+
+    this._emit('stop', {});
+    this._log('Crawl aborted by user', 'error');
+    this._finish('stop');
+  }
+
+  _emitStats(status = {}) {
+    const elapsed = status.elapsedMs ?? (Date.now() - this.startTime);
+    const pages = status.pagesCrawled ?? this.nodes.length;
+    const stats = this.getCrawlStats();
+    const rate = stats.speedPerSec;
 
     this._emit('stats', {
-      pages: this.nodes.length,
+      pages,
       rate: rate.toFixed(1),
       elapsed,
-      errors: this.errors,
-      progress,
+      errors: status.errors ?? this.errors,
+      progress: this.running ? Math.min(99, pages > 0 ? Math.max(1, pages * 10) : 0) : 100,
     });
   }
 
-  _finish() {
+  _finish(mode = 'complete') {
+    if (this._finished) return;
+    this._finished = true;
+
     this.running = false;
+    this._clearPoll();
     this.queueSize = 0;
+    this._pageTimestamps = [];
     this._emit('queue', 0);
     this._emit('stats', {
       pages: this.nodes.length,
@@ -321,12 +291,15 @@ export class CrawlerEngine {
       errors: this.errors,
       progress: 100,
     });
-    this._emit('complete', {
-      nodes: this.nodes,
-      edges: this.edges,
-      logs: this.logs,
-    });
-    this._log(`DONE — ${this.nodes.length} pages indexed`, 'done');
+
+    if (mode === 'complete') {
+      this._emit('complete', {
+        nodes: this.nodes,
+        edges: this.edges,
+        logs: this.logs,
+      });
+      this._log(`DONE — ${this.nodes.length} pages indexed`, 'done');
+    }
   }
 
   buildSpanningTree() {
@@ -367,7 +340,7 @@ export class CrawlerEngine {
 
   getSortedUrls() {
     return [...this.nodes]
-      .map(n => n.url)
+      .map((n) => n.url)
       .sort((a, b) => a.localeCompare(b));
   }
 }

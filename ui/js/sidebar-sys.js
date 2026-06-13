@@ -1,50 +1,24 @@
-import { fetchJobCurrent, fetchQueueCount, fetchStats } from './api.js';
-
 const $ = (sel) => document.querySelector(sel);
-const ERROR = '—';
-const POLL_MS = 3000;
+const IDLE_SPEED = '— req/s';
+const POLL_MS = 1000;
 const FADE_MS = 150;
 
 function bytesToMb(bytes) {
-  if (typeof bytes !== 'number' || Number.isNaN(bytes)) return ERROR;
+  if (typeof bytes !== 'number' || Number.isNaN(bytes)) return '—';
   return Math.round(bytes / (1024 * 1024));
 }
 
 function formatMem(used, limit) {
   const usedMb = bytesToMb(used);
   const limitMb = bytesToMb(limit);
-  if (usedMb === ERROR || limitMb === ERROR) return ERROR;
-  if (used <= 0 || limit <= 0) return ERROR;
+  if (usedMb === '—' || limitMb === '—') return '—';
+  if (used <= 0 || limit <= 0) return '—';
   return `${usedMb}MB / ${limitMb}MB`;
 }
 
-function isValidMem(used, limit) {
-  return (
-    typeof used === 'number' &&
-    typeof limit === 'number' &&
-    !Number.isNaN(used) &&
-    !Number.isNaN(limit) &&
-    used > 0 &&
-    limit > 0
-  );
-}
-
-function isValidThreads(active, total) {
-  return (
-    Number.isInteger(active) &&
-    Number.isInteger(total) &&
-    active >= 0 &&
-    total > 0 &&
-    active <= total
-  );
-}
-
-function isValidQueue(pending) {
-  return Number.isInteger(pending) && pending >= 0;
-}
-
-function formatThreads(active, total) {
-  return `${active} / ${total}`;
+function formatSpeed(speedPerSec) {
+  if (!Number.isFinite(speedPerSec) || speedPerSec <= 0) return IDLE_SPEED;
+  return `${speedPerSec.toFixed(1)} req/s`;
 }
 
 function formatQueue(pending) {
@@ -54,7 +28,7 @@ function formatQueue(pending) {
 function crossfadeSwap(el, newValue, isError = false) {
   if (!el) return;
 
-  const display = isError ? ERROR : newValue;
+  const display = isError ? '—' : newValue;
   if (el.dataset.value === display && el.dataset.error === String(isError)) return;
 
   const current = el.querySelector('.sys-swap__val:not(.sys-swap__val--out)');
@@ -88,60 +62,35 @@ function crossfadeSwap(el, newValue, isError = false) {
   }, FADE_MS);
 }
 
-async function pollMem(memEl) {
-  try {
-    const perf = window.performance?.memory;
-    if (perf?.usedJSHeapSize && perf?.jsHeapSizeLimit) {
-      if (!isValidMem(perf.usedJSHeapSize, perf.jsHeapSizeLimit)) {
-        crossfadeSwap(memEl, ERROR, true);
-        return;
-      }
-      crossfadeSwap(memEl, formatMem(perf.usedJSHeapSize, perf.jsHeapSizeLimit), false);
-      return;
-    }
-
-    const data = await fetchStats();
-    if (!isValidMem(data.usedJSHeapSize, data.jsHeapSizeLimit)) {
-      crossfadeSwap(memEl, ERROR, true);
-      return;
-    }
-    crossfadeSwap(memEl, formatMem(data.usedJSHeapSize, data.jsHeapSizeLimit), false);
-  } catch {
-    crossfadeSwap(memEl, ERROR, true);
+function pollMem(memRow, memEl) {
+  const perf = window.performance?.memory;
+  if (!perf?.usedJSHeapSize || !perf?.jsHeapSizeLimit) {
+    if (memRow) memRow.hidden = true;
+    return;
   }
+
+  if (memRow) memRow.hidden = false;
+  crossfadeSwap(memEl, formatMem(perf.usedJSHeapSize, perf.jsHeapSizeLimit), false);
 }
 
-async function pollThreads(threadsEl) {
-  try {
-    const data = await fetchJobCurrent();
-    const active = data.threadsActive;
-    const total = data.threadsTotal;
-
-    if (!isValidThreads(active, total)) {
-      crossfadeSwap(threadsEl, ERROR, true);
-      return;
-    }
-
-    crossfadeSwap(threadsEl, formatThreads(active, total), false);
-  } catch {
-    crossfadeSwap(threadsEl, ERROR, true);
+function pollSpeed(speedEl, engine) {
+  if (!engine) {
+    crossfadeSwap(speedEl, IDLE_SPEED, false);
+    return;
   }
+
+  const { running, speedPerSec } = engine.getCrawlStats();
+  crossfadeSwap(speedEl, running ? formatSpeed(speedPerSec) : IDLE_SPEED, false);
 }
 
-async function pollQueue(queueEl) {
-  try {
-    const data = await fetchQueueCount();
-    const pending = data.pending;
-
-    if (!isValidQueue(pending)) {
-      crossfadeSwap(queueEl, ERROR, true);
-      return;
-    }
-
-    crossfadeSwap(queueEl, formatQueue(pending), false);
-  } catch {
-    crossfadeSwap(queueEl, ERROR, true);
+function pollQueue(queueEl, engine) {
+  if (!engine) {
+    crossfadeSwap(queueEl, formatQueue(0), false);
+    return;
   }
+
+  const { queueSize } = engine.getCrawlStats();
+  crossfadeSwap(queueEl, formatQueue(queueSize), false);
 }
 
 export function setStatusPill(crawling) {
@@ -153,16 +102,17 @@ export function setStatusPill(crawling) {
   label.textContent = crawling ? 'CRAWLING' : 'IDLE';
 }
 
-export function initSidebarSys() {
+export function initSidebarSys(engine) {
+  const memRow = $('#sys-mem')?.closest('.sys-row');
   const memEl = $('#sys-mem');
-  const threadsEl = $('#sys-threads');
+  const speedEl = $('#sys-speed');
   const queueEl = $('#sys-queue');
-  if (!memEl || !threadsEl || !queueEl) return;
+  if (!speedEl || !queueEl) return;
 
   const tick = () => {
-    pollMem(memEl);
-    pollThreads(threadsEl);
-    pollQueue(queueEl);
+    pollMem(memRow, memEl);
+    pollSpeed(speedEl, engine);
+    pollQueue(queueEl, engine);
   };
 
   tick();

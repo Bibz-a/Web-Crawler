@@ -38,56 +38,35 @@ function makeJobName(seedUrl) {
   return `JOB_${ym}_${slug}`;
 }
 
-export function animateCounter(el, target, duration = 1200, options = {}) {
-  if (!el) return;
-
-  const { decimals = 0, suffix = '' } = options;
-  const start = performance.now();
-  const from = 0;
-
-  function frame(now) {
-    const t = Math.min(1, (now - start) / duration);
-    const eased = 1 - (1 - t) ** 3;
-    const val = from + (target - from) * eased;
-
-    if (decimals > 0) {
-      el.textContent = val.toFixed(decimals) + suffix;
-    } else {
-      el.textContent = Math.round(val).toLocaleString() + suffix;
-    }
-
-    if (t < 1) requestAnimationFrame(frame);
-  }
-
-  requestAnimationFrame(frame);
-}
-
 export class Dashboard {
   constructor() {
     this.queueItems = new Map();
     this.errorItems = [];
-    this.responseTimes = [];
-    this.dataBytes = 0;
     this.liveMode = false;
-    this.maxDepth = 5;
+    this.maxDepth = 3;
     this.currentDepth = 0;
     this.uptimeStart = null;
     this.uptimeTimer = null;
   }
 
-  initPlaceholders() {
-    animateCounter($('#metric-pages'), 1247, 1400);
-    animateCounter($('#metric-errors'), 3, 900);
-    animateCounter($('#metric-response'), 142, 1100, { suffix: 'ms' });
-    animateCounter($('#metric-data'), 48.2, 1300, { decimals: 1, suffix: ' MB' });
+  resetIdle() {
+    this.liveMode = false;
+    $('#dash-job-name').textContent = '—';
+    $('#dash-job-badge').classList.add('dash-bar__badge--hidden');
+    $('#dash-stat-depth').textContent = 'DEPTH —/—';
+    $('#dash-stat-speed').textContent = 'SPEED — req/s';
+    $('#dash-stat-uptime').textContent = 'UPTIME 00:00:00';
+    $('#metric-pages').textContent = '0';
+    $('#metric-errors').textContent = '0';
+    $('#metric-response').textContent = '—';
+    $('#metric-queue').textContent = '0';
+    this.updateErrorCount(0);
   }
 
   resetForCrawl(seedUrl, maxDepth) {
     this.liveMode = true;
     this.queueItems.clear();
     this.errorItems = [];
-    this.responseTimes = [];
-    this.dataBytes = 0;
     this.maxDepth = maxDepth;
     this.currentDepth = 0;
 
@@ -96,8 +75,8 @@ export class Dashboard {
 
     $('#metric-pages').textContent = '0';
     $('#metric-errors').textContent = '0';
-    $('#metric-response').textContent = '0ms';
-    $('#metric-data').textContent = '0.0 MB';
+    $('#metric-response').textContent = '—';
+    $('#metric-queue').textContent = '0';
 
     this.renderQueue();
     this.renderErrors();
@@ -140,7 +119,8 @@ export class Dashboard {
 
     const speedEl = $('#dash-stat-speed');
     if (speedEl && speed !== undefined) {
-      speedEl.textContent = `SPEED ${Math.round(parseFloat(speed) || 0)} req/s`;
+      const n = parseFloat(speed) || 0;
+      speedEl.textContent = n > 0 ? `SPEED ${Math.round(n)} req/s` : 'SPEED — req/s';
     }
 
     if (elapsed !== undefined) {
@@ -161,11 +141,6 @@ export class Dashboard {
     if (node.depth > this.currentDepth) {
       this.currentDepth = node.depth;
       this.updateBarStats({ depth: this.currentDepth });
-    }
-
-    if (!node.failed) {
-      this.responseTimes.push(responseMs);
-      this.dataBytes += 45000 + Math.floor(Math.random() * 120000);
     }
 
     this.renderQueue();
@@ -190,18 +165,16 @@ export class Dashboard {
   updateMetrics() {
     if (!this.liveMode) return;
 
-    const pages = [...this.queueItems.values()].filter(i => i.status !== 'pending').length;
+    const pages = [...this.queueItems.values()].filter((i) => i.status !== 'pending').length;
     const errors = this.errorItems.length;
-    const avg =
-      this.responseTimes.length > 0
-        ? Math.round(this.responseTimes.reduce((a, b) => a + b, 0) / this.responseTimes.length)
-        : 0;
-    const mb = this.dataBytes / (1024 * 1024);
+    const times = [...this.queueItems.values()]
+      .map((i) => i.responseMs)
+      .filter((ms) => typeof ms === 'number' && ms > 0);
+    const avg = times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : null;
 
     $('#metric-pages').textContent = pages.toLocaleString();
     $('#metric-errors').textContent = String(errors);
-    $('#metric-response').textContent = `${avg}ms`;
-    $('#metric-data').textContent = `${mb.toFixed(1)} MB`;
+    $('#metric-response').textContent = avg !== null ? `${avg}ms` : '—';
   }
 
   updateErrorCount(n) {
@@ -231,11 +204,14 @@ export class Dashboard {
     list.innerHTML = items
       .map((item, i) => {
         const g = this.glyphForStatus(item.status);
+        const meta = typeof item.responseMs === 'number' && item.responseMs > 0
+          ? `${item.responseMs}ms`
+          : '—';
         return `
           <div class="dash-row${i % 2 === 0 ? ' dash-row--alt' : ''}">
             <span class="dash-row__glyph ${g.className}">${g.char}</span>
             <span class="dash-row__url" title="${escapeHtml(item.url)}">${escapeHtml(truncateUrl(item.url))}</span>
-            <span class="dash-row__meta">${item.responseMs}ms</span>
+            <span class="dash-row__meta">${meta}</span>
           </div>`;
       })
       .join('');
@@ -251,18 +227,19 @@ export class Dashboard {
     }
 
     list.innerHTML = this.errorItems
-      .map((item, i) => `
+      .map((item, i) => {
+        const typeColor =
+          item.type === 'API_ERR' ? '#FF8C00' : item.type === 'PAGE_ERR' ? '#FF3B3B' : '';
+        const typeStyle = typeColor ? ` style="color:${typeColor}"` : '';
+        return `
         <div class="dash-row dash-row--error${i % 2 === 0 ? ' dash-row--alt' : ''}">
           <span class="dash-row__glyph dash-row__glyph--error">✗</span>
           <span class="dash-row__error-body">
-            <span class="dash-row__error-type">${escapeHtml(item.type)}</span>
+            <span class="dash-row__error-type"${typeStyle}>${escapeHtml(item.type)}</span>
             <span class="dash-row__url" title="${escapeHtml(item.url)}">${escapeHtml(truncateUrl(item.url, 36))}</span>
           </span>
-        </div>`)
+        </div>`;
+      })
       .join('');
   }
-}
-
-export function randomResponseMs() {
-  return 72 + Math.floor(Math.random() * 180);
 }

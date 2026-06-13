@@ -8,35 +8,44 @@ async function parseJsonResponse(res) {
   return res.json();
 }
 
-export async function fetchJobCurrent() {
-  const res = await fetch(`${getApiBase()}/api/job/current`);
-  if (!res.ok) throw new Error(`job/current ${res.status}`);
+async function throwHttpError(res, label) {
+  const body = await res.text().catch(() => '(unreadable)');
+  const err = new Error(`${label} ${res.status}`);
+  err.status = res.status;
+  err.statusText = res.statusText;
+  err.responseBody = body;
+  throw err;
+}
+
+export async function startCrawl({ seedUrl, depth, traversal }) {
+  const res = await fetch(`${getApiBase()}/api/crawl/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seedUrl, depth, traversal }),
+  });
+  if (!res.ok) {
+    await throwHttpError(res, 'crawl/start');
+  }
   return parseJsonResponse(res);
 }
 
-export async function fetchQueueCount() {
-  const res = await fetch(`${getApiBase()}/api/queue/count`);
-  if (!res.ok) throw new Error(`queue/count ${res.status}`);
+export async function fetchCrawlStatus() {
+  const res = await fetch(`${getApiBase()}/api/crawl/status`);
+  if (!res.ok) {
+    await throwHttpError(res, 'crawl/status');
+  }
   return parseJsonResponse(res);
 }
 
-export async function fetchStats() {
-  const res = await fetch(`${getApiBase()}/api/stats`);
-  if (!res.ok) throw new Error(`stats ${res.status}`);
+export async function fetchCrawlResults() {
+  const res = await fetch(`${getApiBase()}/api/crawl/results`);
+  if (!res.ok) throw new Error(`crawl/results ${res.status}`);
   return parseJsonResponse(res);
 }
 
-export async function pushCrawlState(partial) {
-  try {
-    const res = await fetch(`${getApiBase()}/api/internal/state`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(partial),
-    });
-    if (!res.ok && res.status !== 204) {
-      throw new Error(`internal/state ${res.status}`);
-    }
-  } catch {
-    /* best-effort sync for dev server */
+export async function stopCrawl() {
+  const res = await fetch(`${getApiBase()}/api/crawl/stop`, { method: 'POST' });
+  if (!res.ok && res.status !== 204) {
+    await throwHttpError(res, 'crawl/stop');
   }
 }

@@ -1,22 +1,20 @@
 import { LinkGraph } from './link-graph.js';
 import { CrawlerEngine } from './crawler-engine.js';
 import { initSidebarSys, setStatusPill } from './sidebar-sys.js';
-import { Dashboard, randomResponseMs } from './dashboard.js';
+import { Dashboard } from './dashboard.js';
 import { CrawlJobForm } from './crawl-form.js';
 import { loadSettings } from './settings-store.js';
 import { SettingsPanel } from './settings-panel.js';
-import { pushCrawlState } from './api.js';
 import { initLicenseDialog } from './license.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
-initSidebarSys();
 initLicenseDialog();
 
 function boot() {
   const dashboard = new Dashboard();
-  dashboard.initPlaceholders();
+  dashboard.resetIdle();
 
   if (location.protocol === 'file:') {
     const list = $('#queue-list');
@@ -35,26 +33,15 @@ function boot() {
   const storedSettings = loadSettings();
   const crawlForm = new CrawlJobForm(storedSettings);
   const settingsPanel = new SettingsPanel((next) => {
-    crawlForm.applyDefaults(next);
     const logLimit = $('#log-limit');
     if (logLimit) logLimit.value = next.logLimit || '50';
   });
   const engine = new CrawlerEngine();
+  initSidebarSys(engine);
+
   let sortedMode = false;
   let crawlMaxDepth = 3;
-  let activeThreads = 8;
   let activeTraversal = 'bfs';
-
-  function syncApiState(overrides = {}) {
-    const traversal = (overrides.traversal ?? activeTraversal).toUpperCase();
-    pushCrawlState({
-      status: overrides.status ?? 'idle',
-      depth: overrides.depth ?? crawlMaxDepth,
-      threads: overrides.threads ?? 0,
-      queue: overrides.queue ?? 0,
-      traversal: traversal === 'DFS' ? 'DFS' : 'BFS',
-    });
-  }
 
   function formatClock(date) {
     return date.toTimeString().slice(0, 8);
@@ -73,11 +60,11 @@ function boot() {
     let urls = engine.nodes;
     if (sortedMode) {
       const sorted = engine.getSortedUrls();
-      urls = sorted.map(url => engine.nodes.find(n => n.url === url)).filter(Boolean);
+      urls = sorted.map((url) => engine.nodes.find((n) => n.url === url)).filter(Boolean);
     }
 
     const q = filter.toLowerCase();
-    const filtered = q ? urls.filter(n => n.url.toLowerCase().includes(q)) : urls;
+    const filtered = q ? urls.filter((n) => n.url.toLowerCase().includes(q)) : urls;
 
     if (filtered.length === 0) {
       empty.style.display = 'block';
@@ -133,9 +120,9 @@ function boot() {
   }
 
   function switchView(viewId) {
-    $$('.view').forEach(v => v.classList.remove('view--active'));
+    $$('.view').forEach((v) => v.classList.remove('view--active'));
     $(`#view-${viewId}`).classList.add('view--active');
-    $$('.nav-item').forEach(n => {
+    $$('.nav-item').forEach((n) => {
       n.classList.toggle('nav-item--active', n.dataset.view === viewId);
     });
 
@@ -143,11 +130,11 @@ function boot() {
     if (viewId === 'link-graph') linkGraph.resize();
     if (viewId === 'jobs') renderLogs($('#log-limit').value);
     if (viewId === 'dashboard' && !dashboard.liveMode) {
-      dashboard.initPlaceholders();
+      dashboard.resetIdle();
     }
   }
 
-  $$('.nav-item').forEach(btn => {
+  $$('.nav-item').forEach((btn) => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
 
@@ -162,12 +149,7 @@ function boot() {
 
     const url = config.seeds[0];
     crawlMaxDepth = config.maxDepth;
-    activeThreads = config.maxThreads;
-    const method = config.traversal;
-    activeTraversal = method;
-
-    config.requestDelayMs = storedSettings.requestDelayMs ?? config.requestDelayMs;
-    config.maxPages = storedSettings.maxPages ?? config.maxPages;
+    activeTraversal = config.traversal;
 
     linkGraph.clearForCrawl(url);
     sortedMode = false;
@@ -177,23 +159,18 @@ function boot() {
     dashboard.resetForCrawl(url, crawlMaxDepth);
     dashboard.updateBarStats({ depth: 0, maxDepth: crawlMaxDepth, speed: 0, elapsed: 0 });
 
-    syncApiState({
-      status: 'crawling',
-      depth: crawlMaxDepth,
-      threads: activeThreads,
-      queue: 1,
-      traversal: method,
-    });
     switchView('dashboard');
 
-    engine.start(url, crawlMaxDepth, method);
+    engine.start(url, crawlMaxDepth, activeTraversal).catch((err) => {
+      setEngineStatus(false);
+      dashboard.addError('CRAWL_ERR', err.message);
+    });
   });
 
   $('#btn-stop').addEventListener('click', () => {
     engine.stop();
     setEngineStatus(false);
     dashboard.abortCrawl();
-    syncApiState({ status: 'idle', threads: 0, queue: 0 });
   });
 
   $('#url-search').addEventListener('input', (e) => {
@@ -210,12 +187,14 @@ function boot() {
     renderLogs(e.target.value);
   });
 
-  engine.on('start', () => {
-    syncApiState({ status: 'crawling', threads: activeThreads, queue: 1 });
+  engine.on('queue', (size) => {
+    if (dashboard.liveMode) {
+      $('#metric-queue').textContent = String(size);
+    }
   });
 
   engine.on('node', (node) => {
-    const responseMs = randomResponseMs();
+    const responseMs = engine.getLastResponseMs();
 
     dashboard.addQueueItem(node, responseMs);
     linkGraph.syncFromEngine(engine, responseMs);
@@ -223,8 +202,8 @@ function boot() {
     if (node.failed) {
       dashboard.addError('FETCH_FAIL', node.url);
     } else {
-      const prev = engine.nodes.filter(n => n.url !== node.url && !n.failed);
-      prev.slice(-3).forEach(n => {
+      const prev = engine.nodes.filter((n) => n.url !== node.url && !n.failed);
+      prev.slice(-3).forEach((n) => {
         const item = dashboard.queueItems.get(n.url);
         if (item && item.status === 'processing') item.status = 'done';
       });
@@ -234,14 +213,19 @@ function boot() {
     renderUrlTable($('#url-search').value);
   });
 
-  engine.on('queue', (size) => {
-    syncApiState({ status: 'crawling', threads: activeThreads, queue: size });
-  });
-
   engine.on('log', (entry) => {
     if (entry.type === 'error' && !entry.message.startsWith('Crawl aborted')) {
-      const urlMatch = entry.message.match(/([\w.-]+\/[^\s]+)/);
-      dashboard.addError('CRAWL_ERR', urlMatch ? urlMatch[1] : entry.message);
+      const msg = entry.message;
+      if (msg.includes('crawl/status') || msg.includes('Failed to fetch')) {
+        const urlMatch = msg.match(/([\w.-]+\/[^\s|]+)/);
+        dashboard.addError('API_ERR', urlMatch ? urlMatch[1] : msg);
+      } else if (msg.startsWith('FAIL')) {
+        const failMatch = msg.match(/^FAIL (.+?) — fetch failed/);
+        dashboard.addError('PAGE_ERR', failMatch ? failMatch[1] : msg);
+      } else {
+        const urlMatch = msg.match(/([\w.-]+\/[^\s]+)/);
+        dashboard.addError('CRAWL_ERR', urlMatch ? urlMatch[1] : msg);
+      }
     }
     renderLogs($('#log-limit').value);
   });
@@ -257,13 +241,12 @@ function boot() {
   engine.on('complete', () => {
     setEngineStatus(false);
     dashboard.finishCrawl();
-    syncApiState({ status: 'idle', threads: 0, queue: 0 });
     linkGraph.syncFromEngine(engine);
     renderLogs($('#log-limit').value);
   });
 
   engine.on('stop', () => {
-    syncApiState({ status: 'idle', threads: 0, queue: 0 });
+    setEngineStatus(false);
   });
 
   const logLimitEl = $('#log-limit');
